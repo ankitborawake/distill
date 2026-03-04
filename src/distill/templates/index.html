@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+{% block title %}Distill — Articles{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h2>Top Articles</h2>
+    <p>This week's highest-scoring AI and engineering reads.</p>
+</div>
+
+<form method="get" action="/">
+    <div class="filter-bar">
+        <select name="source" onchange="this.form.submit()">
+            <option value="">All Sources</option>
+            {% for s in sources %}
+            <option value="{{ s }}" {% if source_filter == s %}selected{% endif %}>{{ s }}</option>
+            {% endfor %}
+        </select>
+        <select name="limit" onchange="this.form.submit()">
+            {% for n in [20, 50, 100] %}
+            <option value="{{ n }}" {% if limit == n %}selected{% endif %}>Top {{ n }}</option>
+            {% endfor %}
+        </select>
+    </div>
+</form>
+
+{% if articles %}
+<ul class="article-list">
+    {% for article, score in articles %}
+    <li class="article-row">
+        <span class="article-rank">{{ loop.index }}</span>
+        <div class="article-body">
+            <a href="{{ article.url }}" target="_blank" class="article-title">{{ article.title }}</a>
+            <div class="article-meta">
+                {% if article.author %}<span>{{ article.author }}</span>{% endif %}
+                <span class="source-badge" data-source="{{ article.source.value }}">{{ article.source.value }}</span>
+                {% if "manual" in article.tags %}<span class="manual-badge">user pushed</span>{% endif %}
+                {% if article.published_at %}<span>{{ article.published_at.strftime('%b %d') }}</span>{% endif %}
+                {% if article.points %}<span class="points-badge">{{ article.points }} pts</span>{% endif %}
+            </div>
+        </div>
+        <div class="article-scores">
+            {% if score.composite_score > 0 %}
+            <div>
+                <div class="composite-score">{{ "%.2f"|format(score.composite_score) }}</div>
+                <div class="score-bar-wrap">
+                    <div class="score-bar-fill" style="width: {{ (score.composite_score * 100)|int }}%"></div>
+                </div>
+                <div class="score-detail">D:{{ "%.0f"|format(score.technical_depth) }} N:{{ "%.0f"|format(score.novelty) }} A:{{ "%.0f"|format(score.applicability) }}</div>
+            </div>
+            {% else %}
+            <div class="composite-score" style="color: var(--text-muted);">—</div>
+            {% endif %}
+        </div>
+    </li>
+    {% endfor %}
+</ul>
+{% else %}
+<div class="empty-state">
+    <p>No articles found this week.</p>
+    <p>Run <code>distill run</code> to collect and score articles.</p>
+</div>
+{% endif %}
+{% endblock %}

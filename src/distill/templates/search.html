@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Search — Distill{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h2>Topic Search</h2>
+    <p>Find the best articles on any topic from across the web.</p>
+</div>
+
+<form method="post" action="/search" class="search-bar">
+    <input type="text" name="query" value="{{ query }}" placeholder="e.g. agentic engineering, RAG patterns, Claude Code" autofocus />
+    <button type="submit">Search</button>
+</form>
+
+{% if added %}
+<div class="flash flash-success">Added: {{ added }}</div>
+{% endif %}
+
+{% if results is not none %}
+    {% if results %}
+    <ul class="article-list">
+        {% for r in results %}
+        <li class="article-row">
+            <span class="article-rank">{{ loop.index }}</span>
+            <div class="article-body">
+                <a href="{{ r.url }}" target="_blank" class="article-title">{{ r.title }}</a>
+                <div class="article-meta">
+                    {% if r.author %}<span>{{ r.author }}</span>{% endif %}
+                    <span class="source-badge" data-source="{{ r.source|lower|replace(' ', '') }}">{{ r.source }}</span>
+                    {% if r.date %}<span>{{ r.date }}</span>{% endif %}
+                    {% if r.points %}<span class="points-badge">{{ r.points }} pts</span>{% endif %}
+                </div>
+            </div>
+            <form method="post" action="/search/add" style="margin:0; flex-shrink: 0;">
+                <input type="hidden" name="url" value="{{ r.url }}" />
+                <input type="hidden" name="title" value="{{ r.title }}" />
+                <input type="hidden" name="query" value="{{ query }}" />
+                <button type="submit" class="outline secondary" style="padding: 4px 12px; margin: 0; font-size: 0.8rem;">+ Add</button>
+            </form>
+        </li>
+        {% endfor %}
+    </ul>
+    {% else %}
+    <div class="empty-state">
+        <p>No results found for "{{ query }}".</p>
+    </div>
+    {% endif %}
+{% endif %}
+{% endblock %}

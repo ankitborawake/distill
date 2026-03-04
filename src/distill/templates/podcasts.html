@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+{% block title %}Podcasts — Distill{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h2>Podcasts</h2>
+    <p>AI-generated audio digests of your top articles.</p>
+</div>
+
+{% if message %}
+<div class="flash flash-info">{{ message }}</div>
+{% endif %}
+
+<div class="podcast-actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem;">
+        <form action="/podcasts/generate" method="post">
+            <button type="submit" style="width: 100%; margin-bottom: 0.5rem;"
+                    {% if generating %}disabled{% endif %}>
+                Generate Weekly Podcast
+            </button>
+        </form>
+        <small style="color: var(--text-muted);">Top articles + all manually added articles this week</small>
+    </div>
+    <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem;">
+        <form action="/podcasts/generate" method="post">
+            <input type="text" name="article_ids" placeholder="Article IDs (e.g. 12, 45, 78)" style="margin-bottom: 0.5rem;" />
+            <button type="submit" class="secondary" style="width: 100%; margin-bottom: 0.5rem;"
+                    {% if generating %}disabled{% endif %}>
+                Generate On-Demand
+            </button>
+            <small style="color: var(--text-muted);">Create a podcast from specific articles by ID</small>
+        </form>
+    </div>
+</div>
+
+{% if podcasts %}
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr>
+            <th>Week</th>
+            <th>Articles</th>
+            <th>Created</th>
+            <th>Listen</th>
+        </tr>
+    </thead>
+    <tbody>
+        {% for p in podcasts %}
+        <tr>
+            <td><strong>{{ p.week_label }}</strong></td>
+            <td class="mono">{{ p.article_count }}</td>
+            <td>{{ p.created_at[:10] }}</td>
+            <td>
+                {% if p.podcast_path and p.podcast_path.endswith('.mp3') %}
+                <audio controls preload="none">
+                    <source src="/podcast-file/{{ p.week_label }}" type="audio/mpeg">
+                </audio>
+                {% elif p.podcast_path %}
+                <a href="/podcast-file/{{ p.week_label }}">Download</a>
+                {% else %}
+                <span style="color: var(--text-muted);">—</span>
+                {% endif %}
+            </td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% else %}
+<div class="empty-state">
+    <p>No podcasts yet.</p>
+    <p>Use the button above or run <code>distill podcast</code>.</p>
+</div>
+{% endif %}
+
+<details style="margin-top: 1.5rem;">
+    <summary>How podcasts work</summary>
+    <div style="padding-top: 0.5rem; font-size: 0.9rem; color: var(--text);">
+        <p>Manually added articles (via Add Links) are <strong>always included</strong> in weekly podcasts.
+        Article content is fetched on-demand from original URLs.</p>
+        <p style="margin-bottom: 0.25rem;">Current provider: <strong>{{ provider|default('notebooklm') }}</strong>
+        {% if provider|default('notebooklm') == 'notebooklm' %}
+        (Google NotebookLM — high quality, ~10-15 min generation time)
+        {% elif provider|default('notebooklm') == 'edge-tts' %}
+        (Claude script + Microsoft edge-tts — free, ~3-5 min generation time)
+        {% endif %}
+        </p>
+        <p style="margin-bottom: 0.25rem;">CLI usage:</p>
+        <ul style="margin-top: 0;">
+            <li><code>distill podcast</code> — weekly (top articles + manual)</li>
+            <li><code>distill podcast --articles 1,2,3</code> — on-demand</li>
+        </ul>
+    </div>
+</details>
+{% endblock %}

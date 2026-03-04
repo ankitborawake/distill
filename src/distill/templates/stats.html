@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Stats — Distill{% endblock %}
+{% block content %}
+<div class="page-header">
+    <h2>Stats</h2>
+    <p>Database health and collection metrics.</p>
+</div>
+
+<div class="stat-grid">
+    <div class="stat-card">
+        <div class="label">Total</div>
+        <div class="value">{{ stats.total_articles }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Unique</div>
+        <div class="value">{{ stats.unique_articles }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">With Content</div>
+        <div class="value">{{ stats.with_content }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Scored</div>
+        <div class="value">{{ stats.scored }}</div>
+    </div>
+    <div class="stat-card">
+        <div class="label">Duplicates</div>
+        <div class="value">{{ stats.duplicates }}</div>
+    </div>
+</div>
+
+{% if stats.by_source %}
+<h3>By Source</h3>
+<div class="table-wrap">
+<table>
+    <thead>
+        <tr><th>Source</th><th>Count</th></tr>
+    </thead>
+    <tbody>
+        {% for source, count in stats.by_source.items() %}
+        <tr>
+            <td><span class="source-badge" data-source="{{ source }}">{{ source }}</span></td>
+            <td class="mono">{{ count }}</td>
+        </tr>
+        {% endfor %}
+    </tbody>
+</table>
+</div>
+{% endif %}
+{% endblock %}

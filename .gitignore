@@ -23,3 +23,6 @@ output/
 
 # OS
 .DS_Store
+
+# Worktrees
+.worktrees/

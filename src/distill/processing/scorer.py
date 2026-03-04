@@ -107,6 +107,7 @@ async def score_articles(db: Database, config: dict) -> int:
     model = scoring_config.get("model", "claude-sonnet-4-5-20250929")
     weights = scoring_config.get("weights", {})
     min_engagement = scoring_config.get("min_engagement_for_llm", 5)
+    min_engagement_by_source = scoring_config.get("min_engagement_by_source", {})
     batch_size = scoring_config.get("batch_size", 5)
 
     w_eng = weights.get("engagement", 0.20)
@@ -142,7 +143,7 @@ async def score_articles(db: Database, config: dict) -> int:
         llm_eligible = [
             a for a in unscored
             if a.content_text
-            and ((a.points or 0) >= min_engagement or a.points is None)
+            and ((a.points or 0) >= min_engagement_by_source.get(a.source.value, min_engagement) or a.points is None)
         ]
         llm_ids = {a.id for a in llm_eligible}
         engagement_only = [a for a in unscored if a.id not in llm_ids]

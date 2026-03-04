@@ -25,6 +25,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "edge-tts>=7.2.7",
     "notebooklm-py>=0.3.2",
+    "slack-sdk>=3.40.1",
 ]
 
 [project.scripts]

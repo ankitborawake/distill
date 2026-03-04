@@ -9,6 +9,7 @@ class Source(StrEnum):
     RSS = "rss"
     DEVTO = "devto"
     ARXIV = "arxiv"
+    SLACK = "slack"
 
 
 class CollectedArticle(BaseModel):

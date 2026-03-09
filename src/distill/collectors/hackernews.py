@@ -1,5 +1,5 @@
 import asyncio
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 
@@ -20,11 +20,13 @@ class HackerNewsCollector:
         keywords = hn_config.get("keywords", ["AI", "LLM"])
         min_points = hn_config.get("min_points", 10)
         max_results = hn_config.get("max_results", 50)
+        max_age_days = hn_config.get("max_age_days", 30)
+        min_ts = int((datetime.now(UTC) - timedelta(days=max_age_days)).timestamp())
 
         articles = []
         async with httpx.AsyncClient(timeout=30) as client:
             tasks = [
-                self._search_keyword(client, kw, min_points, max_results)
+                self._search_keyword(client, kw, min_points, max_results, min_ts)
                 for kw in keywords
             ]
             results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -42,12 +44,12 @@ class HackerNewsCollector:
         return articles[:max_results]
 
     async def _search_keyword(
-        self, client: httpx.AsyncClient, keyword: str, min_points: int, max_results: int
+        self, client: httpx.AsyncClient, keyword: str, min_points: int, max_results: int, min_ts: int
     ) -> list[CollectedArticle]:
         params = {
             "query": keyword,
             "tags": "story",
-            "numericFilters": f"points>{min_points}",
+            "numericFilters": f"points>{min_points},created_at_i>{min_ts}",
             "hitsPerPage": max_results,
         }
         resp = await client.get(ALGOLIA_SEARCH_URL, params=params)

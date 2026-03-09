@@ -7,6 +7,7 @@ output:
 sources:
   hackernews:
     enabled: true
+    max_age_days: 30
     keywords:
       # Core AI practitioner terms
       - AI coding

@@ -28,7 +28,7 @@ async def _extract_single(client: httpx.AsyncClient, article: Article) -> str | 
     try:
         resp = await client.get(article.url)
         resp.raise_for_status()
-        html = resp.text
+        html = resp.text.translate({i: None for i in range(32) if i not in (9, 10, 13)})  # lxml rejects null bytes and control chars
     except Exception:
         return None
 

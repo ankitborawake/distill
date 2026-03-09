@@ -16,7 +16,7 @@ Collect → Extract → Deduplicate → Score → Digest → Podcast
    │         │          │            └─ Engagement Z-score + Claude LLM judge (depth/novelty/applicability)
    │         │          └─ Title similarity (difflib) + embedding cosine (sentence-transformers)
    │         └─ trafilatura + readability-lxml fallback
-   └─ HackerNews, RSS, Dev.to, arXiv (async, parallel)
+   └─ HackerNews, RSS, Dev.to, arXiv, Slack (async, parallel)
 ```
 
 ## Quick Start
@@ -61,6 +61,7 @@ distill digest [--week LABEL] [--top N]  # Generate markdown digest (default: cu
 distill podcast [--articles IDS]    # Generate podcast (weekly or on-demand by article IDs)
 distill archive                     # Weekly job: digest + podcast + prune old articles
 distill serve                       # Start web dashboard on localhost:8585
+distill ingest FILE [--db PATH]     # Ingest articles from a JSON file (used with Slack MCP backend)
 distill stats                       # Print database statistics
 distill qa [--port PORT]            # Visual QA screenshots (requires rodney + showboat)
 ```
@@ -77,8 +78,44 @@ All commands accept `--config PATH` to override the default `config.yaml`.
 | RSS | Atom/RSS feeds | Enabled | 15 curated feeds (Simon Willison, Karpathy, Anthropic, OpenAI, etc.) |
 | Dev.to | Public API | Disabled | Tag-based (ai, llm, generativeai) |
 | arXiv | Atom Feed | Disabled | Categories: cs.AI, cs.LG, cs.CL, cs.SE |
+| Slack | slack-sdk / MCP | Disabled | Link-sharing channels; two backends (see below) |
 
 All collectors are async and run in parallel. Each implements a common `Collector` protocol, making it straightforward to add new sources.
+
+#### Slack Backend
+
+Slack has two interchangeable backends configured via `sources.slack.backend`:
+
+- **`token`** (autonomous) — uses `slack-sdk` with a user token (`xoxp-*`) to fetch channel history directly. Runs automatically as part of `distill collect`.
+- **`mcp`** (Claude-mediated) — no bot token required. `distill collect` skips Slack; you manually ask Claude to read the channels and pipe the results into the DB:
+  1. Ask Claude: *"Read the last 100 messages from #engineering and give me a JSON list of messages with external URLs and at least 2 reactions."*
+  2. Claude calls the Slack MCP tool, parses results, and formats them as `CollectedArticle` JSON.
+  3. Claude runs: `distill ingest /tmp/slack-articles.json`
+
+The `channels`, `min_reactions`, and `max_results` config values guide Claude in MCP mode even though collection is manual.
+
+### Claude Skill (`distill-pipeline`)
+
+Distill ships a packaged Claude Code skill at `.claude/skills/distill-pipeline/SKILL.md` that automates the full pipeline — including Slack MCP collection — from a single prompt.
+
+**Trigger phrases:** "run the distill pipeline", "collect articles", "generate a digest", "run distill"
+
+**What it does:**
+
+1. Reads `config.yaml` to determine Slack backend and channel config
+2. Dispatches a subagent (to protect the main context window from large pipeline output)
+3. If `backend: mcp` — the subagent reads Slack channels via MCP, filters by `min_reactions`, deduplicates URLs across channels, writes `/tmp/distill-slack-articles.json`, and runs `distill ingest`
+4. Runs `distill run && distill digest` and reports the digest path + article counts
+
+**When each path is used:**
+
+| `slack` config | What happens |
+|---|---|
+| `enabled: false` | Slack skipped; pipeline runs normally |
+| `enabled: true`, `backend: token` | `distill run` fetches Slack autonomously |
+| `enabled: true`, `backend: mcp` | Skill drives MCP collection then runs the pipeline |
+
+To use the skill, just ask Claude: *"Run the distill pipeline"* from this project directory.
 
 ### Scoring System
 
@@ -142,7 +179,7 @@ Everything is customizable via `config.yaml`. The defaults are tuned for AI/engi
 - **Tune article quality** — adjust `scoring.weights` to prioritize novelty over applicability, or vice versa
 - **Switch podcast provider** — set `podcast.provider` to `notebooklm` or `edge-tts`
 - **Change podcast voices** — pick any [edge-tts voice](https://github.com/rany2/edge-tts) for host A/B (edge-tts provider only)
-- **Enable more sources** — flip `devto` or `arxiv` to `enabled: true`
+- **Enable more sources** — flip `devto`, `arxiv`, or `slack` to `enabled: true`
 - **Adjust dedup sensitivity** — lower thresholds catch more duplicates, higher lets more through
 
 ```yaml
@@ -165,6 +202,15 @@ sources:
     enabled: false
   arxiv:
     enabled: false
+  slack:
+    enabled: false
+    backend: mcp            # "mcp" (Claude-mediated) or "token" (autonomous, requires token)
+    # token: "${SLACK_USER_TOKEN}"   # uncomment for token backend (xoxp-* user token)
+    channels:
+      - id: "C0123456789"   # right-click channel in Slack → Copy link → last path segment
+        name: "engineering"
+    min_reactions: 2        # minimum emoji reactions to include a link
+    max_results: 30
 
 scoring:
   model: claude-sonnet-4-5-20250929
@@ -232,7 +278,8 @@ distill/
 │   │   ├── hackernews.py   # HN Algolia API
 │   │   ├── rss.py          # Feedparser-based RSS/Atom
 │   │   ├── devto.py        # Dev.to public API
-│   │   └── arxiv.py        # arXiv Atom feed
+│   │   ├── arxiv.py        # arXiv Atom feed
+│   │   └── slack.py        # Slack (token backend via slack-sdk, or MCP-mediated)
 │   ├── processing/
 │   │   ├── extractor.py    # Content extraction (trafilatura + readability)
 │   │   ├── dedup.py        # Title + embedding deduplication

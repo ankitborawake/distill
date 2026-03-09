@@ -50,6 +50,10 @@
     <p style="margin-top: 1rem;"><em>Content truncated. <a href="{{ article.url }}" target="_blank">Read full article &rarr;</a></em></p>
     {% endif %}
 </div>
+{% elif article.summary %}
+<div style="margin-top: 1.5rem; line-height: 1.7; color: var(--text); font-style: italic;">
+    {{ article.summary }}
+</div>
 {% endif %}
 
 {% if article.tags %}

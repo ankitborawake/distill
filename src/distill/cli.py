@@ -83,12 +83,14 @@ async def _collect_async(db: Database, config: dict, source_filter: str | None =
         HackerNewsCollector,
         RSSCollector,
     )
+    from distill.collectors.slack import SlackCollector
 
     collectors = [
         HackerNewsCollector(),
         RSSCollector(),
         DevToCollector(),
         ArxivCollector(),
+        SlackCollector(),
     ]
 
     if source_filter:
@@ -533,6 +535,47 @@ def _ax_name(node: dict) -> str:
     if isinstance(name, dict):
         return name.get("value", str(name))
     return str(name) if name else "?"
+
+
+@app.command()
+def ingest(
+    file: Annotated[Path, typer.Argument(help="JSON file with CollectedArticle list (use - for stdin)")],
+    db: Annotated[Path | None, typer.Option("--db", help="Path to SQLite database")] = None,
+    config_path: Annotated[Path | None, typer.Option("--config")] = None,
+) -> None:
+    """Ingest articles from a JSON file into the database. Use with Slack MCP backend."""
+    import json as _json
+    import sys
+
+    from distill.models import CollectedArticle
+
+    config = load_config(config_path)
+    db_path = db if db is not None else get_db_path(config)
+    database = Database(db_path)
+    database.init_schema()
+    try:
+        if str(file) == "-":
+            data = _json.load(sys.stdin)
+        else:
+            data = _json.loads(Path(file).read_text())
+
+        if not isinstance(data, list):
+            typer.echo("Error: JSON must be a list of articles", err=True)
+            raise typer.Exit(1)
+
+        count = 0
+        for item in data:
+            article = CollectedArticle(**item)
+            result = database.insert_article(article)
+            if result is not None:
+                count += 1
+
+        typer.echo(f"Ingested {count} new articles ({len(data) - count} duplicates skipped)")
+    except _json.JSONDecodeError as e:
+        typer.echo(f"Error: invalid JSON — {e}", err=True)
+        raise typer.Exit(1)
+    finally:
+        database.close()
 
 
 @app.command()

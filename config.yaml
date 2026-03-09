@@ -98,6 +98,18 @@ sources:
       - software engineering
     max_results: 20
 
+  slack:
+    enabled: false          # set true to activate
+    backend: mcp            # "mcp" (Claude-mediated) | "token" (autonomous, requires token)
+    # token: "${SLACK_USER_TOKEN}"   # uncomment for token backend
+    channels:
+      - id: "C0123456789"   # right-click channel in Slack → Copy link → ID is the last path segment
+        name: "engineering"
+      - id: "C9876543210"
+        name: "ai-research"
+    min_reactions: 2        # minimum emoji reactions to include a link
+    max_results: 30
+
 scoring:
   model: claude-sonnet-4-5-20250929
   batch_size: 5

@@ -29,6 +29,7 @@
         <span class="article-rank">{{ loop.index }}</span>
         <div class="article-body">
             <a href="{{ article.url }}" target="_blank" class="article-title">{{ article.title }}</a>
+            {% if article.summary %}<div class="article-summary">{{ article.summary }}</div>{% endif %}
             <div class="article-meta">
                 {% if article.author %}<span>{{ article.author }}</span>{% endif %}
                 <span class="source-badge" data-source="{{ article.source.value }}">{{ article.source.value }}</span>

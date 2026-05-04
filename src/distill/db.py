@@ -193,6 +193,14 @@ class Database:
         )
         self.conn.commit()
 
+    def update_url(self, article_id: int, url: str):
+        norm_url = normalize_url(url)
+        self.conn.execute(
+            "UPDATE articles SET url = ?, normalized_url = ? WHERE id = ?",
+            (url, norm_url, article_id),
+        )
+        self.conn.commit()
+
     def get_unscored_articles(
         self, min_engagement: int = 0, require_content: bool = False
     ) -> list[Article]:

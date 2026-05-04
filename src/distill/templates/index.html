@@ -28,7 +28,16 @@
     <li class="article-row">
         <span class="article-rank">{{ loop.index }}</span>
         <div class="article-body">
+            {% if article.source.value == "slack" and article.source_id and article.tags %}
+            {% set channel_id = slack_channel_map.get(article.tags[0], '') if slack_channel_map is defined else '' %}
+            {% if channel_id %}
+            <a href="https://miro.slack.com/archives/{{ channel_id }}/p{{ article.source_id.replace('.', '') }}" target="_blank" class="article-title">{{ article.title }}</a>
+            {% else %}
             <a href="{{ article.url }}" target="_blank" class="article-title">{{ article.title }}</a>
+            {% endif %}
+            {% else %}
+            <a href="{{ article.url }}" target="_blank" class="article-title">{{ article.title }}</a>
+            {% endif %}
             {% if article.summary %}<div class="article-summary">{{ article.summary }}</div>{% endif %}
             <div class="article-meta">
                 {% if article.author %}<span>{{ article.author }}</span>{% endif %}

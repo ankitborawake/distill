@@ -12,12 +12,20 @@ from distill.models import CollectedArticle, ScoreBreakdown, Source
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 _generating: bool = False
+_last_error: str | None = None
+
+
+def _build_slack_channel_map(config: dict) -> dict[str, str]:
+    """Build channel_name -> channel_id mapping from config."""
+    channels = config.get("sources", {}).get("slack", {}).get("channels", [])
+    return {ch["name"]: ch["id"] for ch in channels if "name" in ch and "id" in ch}
 
 
 def create_app(config: dict) -> FastAPI:
     app = FastAPI(title="Distill")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     db_path = get_db_path(config)
+    slack_channel_map = _build_slack_channel_map(config)
 
     def get_db() -> Database:
         return Database(db_path)
@@ -46,6 +54,7 @@ def create_app(config: dict) -> FastAPI:
                 "sources": sources,
                 "source_filter": source,
                 "limit": limit,
+                "slack_channel_map": slack_channel_map,
             },
         )
 
@@ -118,6 +127,7 @@ def create_app(config: dict) -> FastAPI:
 
     @app.get("/podcasts", response_class=HTMLResponse)
     async def podcasts_page(request: Request):
+        global _last_error
         db = get_db()
         rows = db.conn.execute(
             "SELECT * FROM digests ORDER BY created_at DESC"
@@ -132,6 +142,9 @@ def create_app(config: dict) -> FastAPI:
                 f"Podcast generation in progress ({provider})."
                 f" Refresh in {time_est}."
             )
+        elif _last_error:
+            ctx["error"] = _last_error
+            _last_error = None
         return templates.TemplateResponse(request, "podcasts.html", ctx)
 
     @app.post("/podcasts/generate")
@@ -148,12 +161,13 @@ def create_app(config: dict) -> FastAPI:
             _generating = True
 
             async def _run():
-                global _generating
+                global _generating, _last_error
                 db = get_db()
                 try:
                     output_dir = get_output_dir(config)
                     await generate_podcast(db, config, output_dir, article_ids=ids)
                 except Exception as e:
+                    _last_error = str(e)
                     print(f"Podcast generation failed: {e}")
                 finally:
                     _generating = False

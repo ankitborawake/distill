@@ -99,16 +99,20 @@ sources:
     max_results: 20
 
   slack:
-    enabled: false          # set true to activate
+    enabled: true
     backend: mcp            # "mcp" (Claude-mediated) | "token" (autonomous, requires token)
     # token: "${SLACK_USER_TOKEN}"   # uncomment for token backend
+    max_age_days: 10        # only fetch messages from the last N days (token backend)
     channels:
-      - id: "C0123456789"   # right-click channel in Slack → Copy link → ID is the last path segment
-        name: "engineering"
-      - id: "C9876543210"
-        name: "ai-research"
+      - id: "C0A9PBLFD3N"
+        name: "ai_coding_guild"
     min_reactions: 2        # minimum emoji reactions to include a link
     max_results: 30
+    trusted_curators:
+      - id: "U03JMH11E20"
+        name: "Andrew Eacott"
+      - id: "U011W8H4752"
+        name: "Ahmed El Gabri"
 
 scoring:
   model: claude-sonnet-4-5-20250929

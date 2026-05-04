@@ -25,6 +25,8 @@ class CollectedArticle(BaseModel):
     points: int | None = None
     comment_count: int | None = None
     summary: str | None = None
+    content_text: str | None = None
+    content_length: int | None = None
 
 
 class Article(BaseModel):

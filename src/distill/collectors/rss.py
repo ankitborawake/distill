@@ -5,6 +5,7 @@ import feedparser
 import httpx
 
 from distill.models import CollectedArticle, Source
+from distill.processing.extractor import fetch_article_content
 
 
 class RSSCollector:
@@ -29,11 +30,21 @@ class RSSCollector:
                     for entry in parsed.entries[:limit]:
                         article = self._parse_entry(entry, name)
                         if article:
+                            article = await self._fetch_content(client, article)
                             articles.append(article)
                 except Exception:
                     continue
 
         return articles
+
+    async def _fetch_content(
+        self, client: httpx.AsyncClient, article: CollectedArticle
+    ) -> CollectedArticle:
+        content = await fetch_article_content(client, article.url)
+        if content:
+            article.content_text = content
+            article.content_length = len(content)
+        return article
 
     def _parse_entry(self, entry: dict, feed_name: str) -> CollectedArticle | None:
         url = entry.get("link")

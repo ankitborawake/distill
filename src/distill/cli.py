@@ -606,6 +606,12 @@ def archive(config_path: Annotated[Path | None, typer.Option("--config")] = None
     except ImportError:
         console.print("  [yellow]Skipping podcast (dependencies not installed)[/yellow]")
 
+    # Cache this week's top articles to prevent repeats next week
+    top_articles = db.get_top_articles(limit=top_n, week_start=week_start, week_end=week_end, exclude_last_week=False)
+    if top_articles:
+        db.save_weekly_cache(label, [a for a, _ in top_articles])
+        console.print(f"  Cached {len(top_articles)} articles for cross-week dedup")
+
     # Delete articles older than current week start
     deleted = db.delete_old_articles(before=week_start)
     console.print(f"  Cleared {deleted} old articles")

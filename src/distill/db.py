@@ -1,6 +1,6 @@
 import json
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from distill.models import Article, CollectedArticle, ScoreBreakdown, Source
@@ -64,6 +64,16 @@ CREATE TABLE IF NOT EXISTS digests (
     article_count INTEGER,
     created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS weekly_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    week_label TEXT NOT NULL,
+    normalized_url TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    UNIQUE(week_label, normalized_url)
+);
+
+CREATE INDEX IF NOT EXISTS idx_weekly_cache_week ON weekly_cache(week_label);
 """
 
 
@@ -106,8 +116,9 @@ class Database:
             cursor = self.conn.execute(
                 """INSERT INTO articles
                    (url, normalized_url, title, author, source, source_id,
-                    published_at, collected_at, tags, points, comment_count, summary)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    published_at, collected_at, tags, points, comment_count, summary,
+                    content_text, content_length)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     article.url,
                     norm_url,
@@ -121,6 +132,8 @@ class Database:
                     article.points,
                     article.comment_count,
                     article.summary,
+                    article.content_text,
+                    article.content_length,
                 ),
             )
             self.conn.commit()
@@ -159,14 +172,18 @@ class Database:
             canonical_id=row["canonical_id"],
         )
 
-    def get_articles_without_content(self, limit: int = 50) -> list[Article]:
-        rows = self.conn.execute(
-            """SELECT * FROM articles
-               WHERE content_text IS NULL AND is_duplicate = 0
-               ORDER BY COALESCE(points, 0) DESC, collected_at DESC
-               LIMIT ?""",
-            (limit,),
-        ).fetchall()
+    def get_articles_without_content(
+        self, limit: int = 50, source: str | None = None
+    ) -> list[Article]:
+        query = """SELECT * FROM articles
+               WHERE content_text IS NULL AND is_duplicate = 0"""
+        params: list = []
+        if source:
+            query += " AND source = ?"
+            params.append(source)
+        query += " ORDER BY COALESCE(points, 0) DESC, collected_at DESC LIMIT ?"
+        params.append(limit)
+        rows = self.conn.execute(query, params).fetchall()
         return [self._row_to_article(r) for r in rows]
 
     def update_content(self, article_id: int, content: str):
@@ -209,19 +226,32 @@ class Database:
         self.conn.commit()
 
     def get_top_articles(
-        self, limit: int = 20, week_start: str | None = None, week_end: str | None = None
+        self,
+        limit: int = 20,
+        week_start: str | None = None,
+        week_end: str | None = None,
+        max_age_days: int = 15,
+        exclude_last_week: bool = True,
     ) -> list[tuple[Article, ScoreBreakdown]]:
+        cutoff = (datetime.now() - timedelta(days=max_age_days)).isoformat()
         query = """
             SELECT a.*, s.engagement_score, s.technical_depth, s.novelty,
                    s.applicability, s.composite_score, s.reasoning
             FROM articles a
             LEFT JOIN scores s ON a.id = s.article_id
             WHERE a.is_duplicate = 0 AND a.content_text IS NOT NULL
+              AND COALESCE(a.published_at, a.collected_at) >= ?
         """
-        params: list = []
+        params: list = [cutoff]
         if week_start and week_end:
             query += " AND a.collected_at >= ? AND a.collected_at < ?"
             params.extend([week_start, week_end])
+        if exclude_last_week:
+            cached_urls = self._get_last_week_cache()
+            if cached_urls:
+                placeholders = ",".join("?" for _ in cached_urls)
+                query += f" AND a.normalized_url NOT IN ({placeholders})"
+                params.extend(cached_urls)
         query += " ORDER BY COALESCE(s.composite_score, 0) DESC, COALESCE(a.points, 0) DESC"
         query += " LIMIT ?"
         params.append(limit)
@@ -240,6 +270,24 @@ class Database:
             )
             results.append((article, score))
         return results
+
+    def _get_last_week_cache(self) -> list[str]:
+        rows = self.conn.execute(
+            """SELECT normalized_url FROM weekly_cache
+               ORDER BY created_at DESC LIMIT 20"""
+        ).fetchall()
+        return [r["normalized_url"] for r in rows]
+
+    def save_weekly_cache(self, week_label: str, articles: list[Article]):
+        self.conn.execute("DELETE FROM weekly_cache")
+        for article in articles[:20]:
+            self.conn.execute(
+                """INSERT OR IGNORE INTO weekly_cache
+                   (week_label, normalized_url, created_at)
+                   VALUES (?, ?, ?)""",
+                (week_label, article.normalized_url, datetime.now().isoformat()),
+            )
+        self.conn.commit()
 
     def get_all_articles(self, non_duplicate_only: bool = True) -> list[Article]:
         query = "SELECT * FROM articles"

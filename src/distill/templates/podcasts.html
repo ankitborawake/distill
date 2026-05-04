@@ -9,6 +9,11 @@
 {% if message %}
 <div class="flash flash-info">{{ message }}</div>
 {% endif %}
+{% if error %}
+<div class="flash flash-error" style="background: #2d1b1b; border: 1px solid #6b3030; color: #ff9999; padding: 1rem; border-radius: 8px; margin-bottom: 1rem;">
+    <strong>Podcast generation failed:</strong> {{ error }}
+</div>
+{% endif %}
 
 <div class="podcast-actions" style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 2rem;">
     <div style="background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.25rem;">

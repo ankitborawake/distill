@@ -67,3 +67,14 @@ class ScoredArticle(BaseModel):
 
     article: Article
     score: ScoreBreakdown
+
+
+class Digest(BaseModel):
+    """Stored weekly digest and optional podcast output."""
+
+    id: int
+    week_label: str
+    markdown: str | None = None
+    podcast_path: str | None = None
+    article_count: int | None = None
+    created_at: str

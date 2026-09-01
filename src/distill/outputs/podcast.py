@@ -389,24 +389,7 @@ async def generate_podcast(
 
     # Link to digest
     if not article_ids:
-        week_label = label
-        row = db.conn.execute(
-            "SELECT id FROM digests WHERE week_label = ?", (week_label,)
-        ).fetchone()
-        if row:
-            db.conn.execute(
-                """UPDATE digests
-                   SET podcast_path = ?, article_count = ?, created_at = ?
-                   WHERE week_label = ?""",
-                (str(audio_path), len(articles), datetime.now().isoformat(), week_label),
-            )
-        else:
-            db.conn.execute(
-                """INSERT INTO digests (week_label, podcast_path, article_count, created_at)
-                   VALUES (?, ?, ?, ?)""",
-                (week_label, str(audio_path), len(articles), datetime.now().isoformat()),
-            )
-        db.conn.commit()
+        db.save_podcast(label, audio_path, len(articles))
 
     size_mb = audio_path.stat().st_size / 1024 / 1024
     print(f"Podcast saved: {audio_path} ({size_mb:.1f} MB)")

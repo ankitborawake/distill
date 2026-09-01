@@ -52,11 +52,9 @@ def test_insert_duplicate_url_updates_engagement(tmp_db):
     assert id1 is not None
     assert id2 is None  # duplicate returns None
 
-    row = tmp_db.conn.execute(
-        "SELECT points, comment_count FROM articles WHERE id = ?", (id1,)
-    ).fetchone()
-    assert row["points"] == 100
-    assert row["comment_count"] == 20
+    stored, _ = tmp_db.get_article_with_score(id1)
+    assert stored.points == 100
+    assert stored.comment_count == 20
 
 
 def test_get_stats(tmp_db):
@@ -96,3 +94,37 @@ def test_insert_and_get_score(tmp_db):
     a, s = results[0]
     assert s.composite_score == 0.75
     assert s.reasoning == "Good article"
+
+
+def test_get_article_with_score(tmp_db):
+    article_id = tmp_db.insert_article(
+        CollectedArticle(
+            url="https://example.com/detail",
+            title="Detail",
+            source=Source.RSS,
+        )
+    )
+
+    article, score = tmp_db.get_article_with_score(article_id)
+
+    assert article.id == article_id
+    assert article.title == "Detail"
+    assert score.composite_score == 0
+
+
+def test_digest_and_podcast_persistence(tmp_db, tmp_path):
+    tmp_db.insert_digest("2026-W36", "# Digest", 3)
+
+    digest = tmp_db.get_digest("2026-W36")
+    assert digest is not None
+    assert digest.markdown == "# Digest"
+    assert tmp_db.list_digests() == [digest]
+
+    podcast_path = tmp_path / "podcast.mp3"
+    tmp_db.save_podcast("2026-W36", podcast_path, 4)
+
+    updated = tmp_db.get_digest("2026-W36")
+    assert updated is not None
+    assert updated.markdown == "# Digest"
+    assert updated.podcast_path == str(podcast_path)
+    assert updated.article_count == 4

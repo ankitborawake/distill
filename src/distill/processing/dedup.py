@@ -42,14 +42,7 @@ def run_embedding_dedup(
     model = SentenceTransformer(model_name)
     embeddings = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
 
-    # Store embeddings in DB
-    for i, article in enumerate(articles):
-        emb_bytes = embeddings[i].tobytes()
-        db.conn.execute(
-            "UPDATE articles SET embedding = ? WHERE id = ?",
-            (emb_bytes, article.id),
-        )
-    db.conn.commit()
+    db.save_embeddings({article.id: embeddings[i].tobytes() for i, article in enumerate(articles)})
 
     # Cosine similarity (embeddings are already normalized, so dot product = cosine)
     sim_matrix = embeddings @ embeddings.T

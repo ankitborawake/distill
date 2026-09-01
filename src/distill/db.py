@@ -3,7 +3,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from distill.models import Article, CollectedArticle, ScoreBreakdown, Source
+from distill.models import Article, CollectedArticle, Digest, ScoreBreakdown, Source
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS articles (
@@ -181,6 +181,23 @@ class Database:
             canonical_id=row["canonical_id"],
         )
 
+    def _row_to_scored_article(self, row: sqlite3.Row) -> tuple[Article, ScoreBreakdown]:
+        return (
+            self._row_to_article(row),
+            ScoreBreakdown(
+                engagement_score=row["engagement_score"] or 0,
+                technical_depth=row["technical_depth"] or 0,
+                novelty=row["novelty"] or 0,
+                applicability=row["applicability"] or 0,
+                composite_score=row["composite_score"] or 0,
+                reasoning=row["reasoning"] or "",
+            ),
+        )
+
+    @staticmethod
+    def _row_to_digest(row: sqlite3.Row) -> Digest:
+        return Digest(**dict(row))
+
     def get_articles_without_content(
         self, limit: int = 50, source: str | None = None
     ) -> list[Article]:
@@ -274,19 +291,18 @@ class Database:
         params.append(limit)
 
         rows = self.conn.execute(query, params).fetchall()
-        results = []
-        for r in rows:
-            article = self._row_to_article(r)
-            score = ScoreBreakdown(
-                engagement_score=r["engagement_score"] or 0,
-                technical_depth=r["technical_depth"] or 0,
-                novelty=r["novelty"] or 0,
-                applicability=r["applicability"] or 0,
-                composite_score=r["composite_score"] or 0,
-                reasoning=r["reasoning"] or "",
-            )
-            results.append((article, score))
-        return results
+        return [self._row_to_scored_article(row) for row in rows]
+
+    def get_article_with_score(self, article_id: int) -> tuple[Article, ScoreBreakdown] | None:
+        row = self.conn.execute(
+            """SELECT a.*, s.engagement_score, s.technical_depth, s.novelty,
+                      s.applicability, s.composite_score, s.reasoning
+               FROM articles a
+               LEFT JOIN scores s ON a.id = s.article_id
+               WHERE a.id = ?""",
+            (article_id,),
+        ).fetchone()
+        return self._row_to_scored_article(row) if row else None
 
     def _get_last_week_cache(self) -> list[str]:
         rows = self.conn.execute(
@@ -327,6 +343,13 @@ class Database:
         )
         self.conn.commit()
 
+    def save_embeddings(self, embeddings: dict[int, bytes]) -> None:
+        self.conn.executemany(
+            "UPDATE articles SET embedding = ? WHERE id = ?",
+            ((embedding, article_id) for article_id, embedding in embeddings.items()),
+        )
+        self.conn.commit()
+
     def get_stats(self) -> dict:
         stats = {}
         stats["total_articles"] = self.conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
@@ -357,6 +380,29 @@ class Database:
         self.conn.commit()
         return cursor.lastrowid
 
+    def list_digests(self) -> list[Digest]:
+        rows = self.conn.execute("SELECT * FROM digests ORDER BY created_at DESC").fetchall()
+        return [self._row_to_digest(row) for row in rows]
+
+    def get_digest(self, week_label: str) -> Digest | None:
+        row = self.conn.execute(
+            "SELECT * FROM digests WHERE week_label = ?", (week_label,)
+        ).fetchone()
+        return self._row_to_digest(row) if row else None
+
+    def save_podcast(self, week_label: str, podcast_path: Path, article_count: int) -> None:
+        self.conn.execute(
+            """INSERT INTO digests
+                   (week_label, podcast_path, article_count, created_at)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(week_label) DO UPDATE SET
+                   podcast_path = excluded.podcast_path,
+                   article_count = excluded.article_count,
+                   created_at = excluded.created_at""",
+            (week_label, str(podcast_path), article_count, datetime.now().isoformat()),
+        )
+        self.conn.commit()
+
     def get_manual_articles(
         self, week_start: str | None = None, week_end: str | None = None
     ) -> list[tuple[Article, ScoreBreakdown]]:
@@ -373,19 +419,7 @@ class Database:
             params.extend([week_start, week_end])
         query += " ORDER BY a.collected_at DESC"
         rows = self.conn.execute(query, params).fetchall()
-        results = []
-        for r in rows:
-            article = self._row_to_article(r)
-            score = ScoreBreakdown(
-                engagement_score=r["engagement_score"] or 0,
-                technical_depth=r["technical_depth"] or 0,
-                novelty=r["novelty"] or 0,
-                applicability=r["applicability"] or 0,
-                composite_score=r["composite_score"] or 0,
-                reasoning=r["reasoning"] or "",
-            )
-            results.append((article, score))
-        return results
+        return [self._row_to_scored_article(row) for row in rows]
 
     def get_articles_by_ids(self, article_ids: list[int]) -> list[tuple[Article, ScoreBreakdown]]:
         if not article_ids:
@@ -399,19 +433,7 @@ class Database:
             WHERE a.id IN ({placeholders})
         """
         rows = self.conn.execute(query, article_ids).fetchall()
-        results = []
-        for r in rows:
-            article = self._row_to_article(r)
-            score = ScoreBreakdown(
-                engagement_score=r["engagement_score"] or 0,
-                technical_depth=r["technical_depth"] or 0,
-                novelty=r["novelty"] or 0,
-                applicability=r["applicability"] or 0,
-                composite_score=r["composite_score"] or 0,
-                reasoning=r["reasoning"] or "",
-            )
-            results.append((article, score))
-        return results
+        return [self._row_to_scored_article(row) for row in rows]
 
     def truncate_content(self, excerpt_length: int = 300) -> int:
         """Replace full article text with a short excerpt. Called after scoring."""

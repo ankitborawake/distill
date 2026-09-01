@@ -507,6 +507,7 @@ def ingest(
     import sys
 
     from distill.models import CollectedArticle
+    from distill.processing.intake import ingest_articles
 
     config = load_config(config_path)
     db_path = db if db is not None else get_db_path(config)
@@ -522,12 +523,9 @@ def ingest(
             typer.echo("Error: JSON must be a list of articles", err=True)
             raise typer.Exit(1)
 
-        count = 0
-        for item in data:
-            article = CollectedArticle(**item)
-            result = database.insert_article(article)
-            if result is not None:
-                count += 1
+        articles = [CollectedArticle(**item) for item in data]
+        results = ingest_articles(database, articles)
+        count = sum(result.article_id is not None for result in results)
 
         typer.echo(f"Ingested {count} new articles ({len(data) - count} duplicates skipped)")
     except _json.JSONDecodeError as e:

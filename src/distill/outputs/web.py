@@ -7,7 +7,6 @@ from fastapi.templating import Jinja2Templates
 
 from distill.config import get_db_path
 from distill.db import Database
-from distill.models import CollectedArticle, Source
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -163,36 +162,18 @@ def create_app(config: dict) -> FastAPI:
 
     @app.post("/add", response_class=HTMLResponse)
     async def add_links_submit(request: Request, urls: str = Form("")):
-        from distill.processing.extractor import extract_articles
+        from distill.processing.intake import ManualArticleRequest, add_manual_articles
 
         raw_urls = [u.strip() for u in urls.splitlines() if u.strip()]
-        results = []
         db = get_db()
-        normalized_urls = [
-            url if url.startswith(("http://", "https://")) else "https://" + url for url in raw_urls
-        ]
-        extracted = await extract_articles(normalized_urls)
-        for url, result in zip(normalized_urls, extracted, strict=True):
-            title = result.title or result.url
-            entry = {"url": result.url, "status": "error", "title": title}
-            article = CollectedArticle(
-                url=result.url,
-                title=title,
-                source=Source.RSS,
-                source_id=f"manual:{url}",
-                tags=["manual"],
-            )
-            aid = db.insert_article(article)
-            if aid is None:
-                entry["status"] = "exists"
-            elif result.content:
-                db.update_content(aid, result.content)
-                entry["status"] = "extracted"
-            else:
-                entry["status"] = "added"
-            results.append(entry)
-
+        intake_results = await add_manual_articles(
+            db, [ManualArticleRequest(url) for url in raw_urls]
+        )
         db.close()
+        results = [
+            {"url": result.url, "status": result.status.value, "title": result.title}
+            for result in intake_results
+        ]
         return templates.TemplateResponse(request, "add.html", {"results": results})
 
     @app.get("/search", response_class=HTMLResponse)
@@ -213,20 +194,10 @@ def create_app(config: dict) -> FastAPI:
         title: str = Form(""),
         query: str = Form(""),
     ):
-        from distill.processing.extractor import extract_article
+        from distill.processing.intake import ManualArticleRequest, add_manual_articles
 
         db = get_db()
-        result = await extract_article(url)
-        article = CollectedArticle(
-            url=result.url,
-            title=title or result.title or result.url,
-            source=Source.RSS,
-            source_id=f"manual:{url}",
-            tags=["manual"],
-        )
-        aid = db.insert_article(article)
-        if aid is not None and result.content:
-            db.update_content(aid, result.content)
+        await add_manual_articles(db, [ManualArticleRequest(url, title=title)])
         db.close()
 
         # Re-run search to show updated results

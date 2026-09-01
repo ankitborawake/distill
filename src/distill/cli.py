@@ -71,47 +71,19 @@ def collect(
     db = _get_db(config)
     db.init_schema()
 
-    total = asyncio.run(_collect_async(db, config, source_filter=source))
+    from distill.processing.pipeline import collect_articles
+
+    result = asyncio.run(collect_articles(db, config, source_filter=source))
     db.close()
-    console.print(f"[green]Collected {total} new articles.[/green]")
-
-
-async def _collect_async(db: Database, config: dict, source_filter: str | None = None) -> int:
-    from distill.collectors import (
-        ArxivCollector,
-        DevToCollector,
-        HackerNewsCollector,
-        RSSCollector,
-    )
-    from distill.collectors.slack import SlackCollector
-
-    collectors = [
-        HackerNewsCollector(),
-        RSSCollector(),
-        DevToCollector(),
-        ArxivCollector(),
-        SlackCollector(),
-    ]
-
-    if source_filter:
-        collectors = [c for c in collectors if c.source_name == source_filter]
-
-    total = 0
-    for collector in collectors:
-        try:
-            console.print(f"  Collecting from [cyan]{collector.source_name}[/cyan]...")
-            articles = await collector.collect(config)
-            inserted = 0
-            for article in articles:
-                result = db.insert_article(article)
-                if result is not None:
-                    inserted += 1
-            console.print(f"    → {len(articles)} found, {inserted} new")
-            total += inserted
-        except Exception as e:
-            console.print(f"    [red]Error: {e}[/red]")
-
-    return total
+    for source_result in result.sources:
+        if source_result.error:
+            console.print(f"  [red]{source_result.source}: {source_result.error}[/red]")
+        else:
+            console.print(
+                f"  {source_result.source}: {source_result.found} found, "
+                f"{source_result.inserted} new"
+            )
+    console.print(f"[green]Collected {result.inserted} new articles.[/green]")
 
 
 @app.command()
@@ -179,44 +151,27 @@ def score(
 def run(config_path: Annotated[Path | None, typer.Option("--config")] = None):
     """Full pipeline: collect → extract → dedup → score."""
     config = load_config(config_path)
-    db = _get_db(config)
-    db.init_schema()
+    from distill.processing.pipeline import PipelineStage, run_pipeline
+
+    labels = {
+        PipelineStage.COLLECT: "Collecting articles",
+        PipelineStage.EXTRACT: "Extracting content",
+        PipelineStage.DEDUP: "Deduplicating",
+        PipelineStage.SCORE: "Scoring",
+        PipelineStage.TRUNCATE: "Truncating stored content",
+    }
+
+    def show_stage(stage: PipelineStage) -> None:
+        position = list(PipelineStage).index(stage) + 1
+        console.print(f"\n[bold cyan]{position}/5 {labels[stage]}[/bold cyan]")
 
     console.print("[bold]Running full pipeline...[/bold]")
-
-    # Collect
-    console.print("\n[bold cyan]1/4 Collecting articles[/bold cyan]")
-    new_count = asyncio.run(_collect_async(db, config))
-    console.print(f"  Total new: {new_count}")
-
-    # Extract
-    console.print("\n[bold cyan]2/4 Extracting content[/bold cyan]")
-    from distill.processing.extractor import extract_content
-
-    extracted = asyncio.run(extract_content(db))
-    console.print(f"  Extracted: {extracted}")
-
-    # Dedup
-    console.print("\n[bold cyan]3/4 Deduplicating[/bold cyan]")
-    from distill.processing.dedup import run_title_dedup
-
-    threshold = config.get("dedup", {}).get("title_similarity_threshold", 0.85)
-    deduped = run_title_dedup(db, threshold=threshold)
-    console.print(f"  Duplicates found: {deduped}")
-
-    # Score
-    console.print("\n[bold cyan]4/5 Scoring[/bold cyan]")
-    from distill.processing.scorer import score_articles
-
-    scored = asyncio.run(score_articles(db, config))
-    console.print(f"  Scored: {scored}")
-
-    # Truncate content — keep only excerpts after scoring
-    console.print("\n[bold cyan]5/5 Truncating stored content[/bold cyan]")
-    truncated = db.truncate_content(excerpt_length=300)
-    console.print(f"  Truncated: {truncated} articles")
-
-    db.close()
+    result = asyncio.run(run_pipeline(config, on_stage=show_stage))
+    console.print(f"  Collected: {result.collection.inserted}")
+    console.print(f"  Extracted: {result.extracted}")
+    console.print(f"  Duplicates found: {result.deduplicated}")
+    console.print(f"  Scored: {result.scored}")
+    console.print(f"  Truncated: {result.truncated} articles")
     console.print("\n[bold green]Pipeline complete![/bold green]")
 
 

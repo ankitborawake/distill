@@ -103,6 +103,8 @@ async def extract_content(db: Database, limit: int = 50) -> int:
 
 async def extract_article(url: str, *, hint_text: str | None = None) -> ExtractedArticle:
     """Resolve and extract one article without persisting it."""
+    if not _is_supported_url(url):
+        raise ValueError(f"Unsupported article URL: {url!r}")
     return (await extract_articles([ExtractionRequest(url=url, hint_text=hint_text)]))[0]
 
 
@@ -117,10 +119,6 @@ async def extract_articles(
         request if isinstance(request, ExtractionRequest) else ExtractionRequest(url=request)
         for request in requests
     ]
-    for request in normalized:
-        if not request.url.startswith(("http://", "https://")):
-            raise ValueError(f"Unsupported article URL: {request.url!r}")
-
     semaphore = asyncio.Semaphore(concurrency)
     async with httpx.AsyncClient(
         timeout=20,
@@ -129,10 +127,16 @@ async def extract_articles(
     ) as client:
 
         async def extract_one(request: ExtractionRequest) -> ExtractedArticle:
+            if not _is_supported_url(request.url):
+                return ExtractedArticle(request.url, request.url, None, None, None)
             async with semaphore:
                 return await _extract_article(client, request)
 
         return await asyncio.gather(*(extract_one(request) for request in normalized))
+
+
+def _is_supported_url(url: str) -> bool:
+    return url.startswith(("http://", "https://"))
 
 
 async def _extract_article(

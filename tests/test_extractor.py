@@ -98,3 +98,18 @@ async def test_extract_articles_preserves_order_and_isolates_no_content():
 async def test_extract_article_rejects_non_http_url():
     with pytest.raises(ValueError, match="Unsupported article URL"):
         await extract_article("example.com/article")
+
+
+@pytest.mark.asyncio
+async def test_extract_articles_isolates_invalid_urls():
+    valid = "https://example.com/valid"
+    html = "<title>Valid</title>" + "content " * 30
+    with patch(
+        "distill.processing.extractor.httpx.AsyncClient",
+        return_value=_mock_client({valid: _response(valid, html)}),
+    ):
+        results = await extract_articles(["not-a-url", valid])
+
+    assert results[0] == ExtractedArticle("not-a-url", "not-a-url", None, None, None)
+    assert results[1].title == "Valid"
+    assert results[1].content

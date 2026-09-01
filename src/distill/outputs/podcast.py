@@ -101,7 +101,8 @@ async def _fetch_article_content(url: str) -> str | None:
         import trafilatura
 
         async with httpx.AsyncClient(
-            timeout=20, follow_redirects=True,
+            timeout=20,
+            follow_redirects=True,
             headers={"User-Agent": "distill/0.1"},
         ) as client:
             resp = await client.get(url)
@@ -156,10 +157,7 @@ async def _generate_notebooklm(
 ) -> Path:
     from notebooklm import NotebookLMClient
 
-    title = (
-        f"Distill On-Demand — {label}" if article_ids
-        else f"Distill — {label}"
-    )
+    title = f"Distill On-Demand — {label}" if article_ids else f"Distill — {label}"
 
     source_text = _build_source_text(articles, article_texts, label)
     source_path = output_dir / f"podcast-source-{label}.md"
@@ -185,15 +183,11 @@ async def _generate_notebooklm(
             "listener can apply at work Monday morning. Be direct, skip hype. "
             "Keep the tone conversational but information-dense."
         )
-        status = await client.artifacts.generate_audio(
-            nb_id, instructions=instructions
-        )
+        status = await client.artifacts.generate_audio(nb_id, instructions=instructions)
 
         print(f"Podcast generation started: {title}")
         print("Waiting for NotebookLM audio (this takes a few minutes)...")
-        await client.artifacts.wait_for_completion(
-            nb_id, status.task_id, timeout=600.0
-        )
+        await client.artifacts.wait_for_completion(nb_id, status.task_id, timeout=600.0)
 
         await client.artifacts.download_audio(nb_id, str(audio_path))
 
@@ -413,7 +407,11 @@ async def generate_podcast(
     elif provider == "edge-tts":
         _status("Generating podcast script with Claude...")
         audio_path = await _generate_edge_tts(
-            articles, article_texts, label, output_dir, podcast_config,
+            articles,
+            article_texts,
+            label,
+            output_dir,
+            podcast_config,
             on_status=on_status,
         )
     else:

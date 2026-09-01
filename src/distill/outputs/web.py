@@ -36,9 +36,7 @@ def create_app(config: dict) -> FastAPI:
 
         db = get_db()
         _, week_start, week_end = get_week_range()
-        articles = db.get_top_articles(
-            limit=limit, week_start=week_start, week_end=week_end
-        )
+        articles = db.get_top_articles(limit=limit, week_start=week_start, week_end=week_end)
 
         if source:
             articles = [(a, s) for a, s in articles if a.source.value == source]
@@ -95,14 +93,10 @@ def create_app(config: dict) -> FastAPI:
     @app.get("/digests", response_class=HTMLResponse)
     async def digests_list(request: Request):
         db = get_db()
-        rows = db.conn.execute(
-            "SELECT * FROM digests ORDER BY created_at DESC"
-        ).fetchall()
+        rows = db.conn.execute("SELECT * FROM digests ORDER BY created_at DESC").fetchall()
         digests = [dict(r) for r in rows]
         db.close()
-        return templates.TemplateResponse(
-            request, "digest.html", {"digests": digests}
-        )
+        return templates.TemplateResponse(request, "digest.html", {"digests": digests})
 
     @app.get("/digest/{week_label}", response_class=HTMLResponse)
     async def digest_detail(request: Request, week_label: str):
@@ -121,27 +115,20 @@ def create_app(config: dict) -> FastAPI:
         db = get_db()
         stats = db.get_stats()
         db.close()
-        return templates.TemplateResponse(
-            request, "stats.html", {"stats": stats}
-        )
+        return templates.TemplateResponse(request, "stats.html", {"stats": stats})
 
     @app.get("/podcasts", response_class=HTMLResponse)
     async def podcasts_page(request: Request):
         global _last_error
         db = get_db()
-        rows = db.conn.execute(
-            "SELECT * FROM digests ORDER BY created_at DESC"
-        ).fetchall()
+        rows = db.conn.execute("SELECT * FROM digests ORDER BY created_at DESC").fetchall()
         podcasts = [dict(r) for r in rows]
         db.close()
         provider = config.get("podcast", {}).get("provider", "notebooklm")
         ctx = {"podcasts": podcasts, "generating": _generating, "provider": provider}
         if _generating:
             time_est = "10-15 minutes" if provider == "notebooklm" else "3-5 minutes"
-            ctx["message"] = (
-                f"Podcast generation in progress ({provider})."
-                f" Refresh in {time_est}."
-            )
+            ctx["message"] = f"Podcast generation in progress ({provider}). Refresh in {time_est}."
         elif _last_error:
             ctx["error"] = _last_error
             _last_error = None
@@ -197,9 +184,7 @@ def create_app(config: dict) -> FastAPI:
 
     @app.get("/add", response_class=HTMLResponse)
     async def add_links_page(request: Request):
-        return templates.TemplateResponse(
-            request, "add.html", {"results": None}
-        )
+        return templates.TemplateResponse(request, "add.html", {"results": None})
 
     @app.post("/add", response_class=HTMLResponse)
     async def add_links_submit(request: Request, urls: str = Form("")):
@@ -254,15 +239,11 @@ def create_app(config: dict) -> FastAPI:
                 results.append(entry)
 
         db.close()
-        return templates.TemplateResponse(
-            request, "add.html", {"results": results}
-        )
+        return templates.TemplateResponse(request, "add.html", {"results": results})
 
     @app.get("/search", response_class=HTMLResponse)
     async def search_page(request: Request):
-        return templates.TemplateResponse(
-            request, "search.html", {"results": None, "query": ""}
-        )
+        return templates.TemplateResponse(request, "search.html", {"results": None, "query": ""})
 
     @app.post("/search", response_class=HTMLResponse)
     async def search_submit(request: Request, query: str = Form("")):
@@ -293,7 +274,8 @@ def create_app(config: dict) -> FastAPI:
         if aid is not None:
             try:
                 async with httpx.AsyncClient(
-                    timeout=20, follow_redirects=True,
+                    timeout=20,
+                    follow_redirects=True,
                     headers={"User-Agent": "distill/0.1"},
                 ) as client:
                     resp = await client.get(url)
@@ -312,7 +294,8 @@ def create_app(config: dict) -> FastAPI:
         # Re-run search to show updated results
         results = await _search_articles(query)
         return templates.TemplateResponse(
-            request, "search.html",
+            request,
+            "search.html",
             {"results": results, "query": query, "added": title},
         )
 
@@ -339,15 +322,17 @@ async def _search_articles(query: str, limit: int = 10) -> list[dict]:
                 if url in seen_urls:
                     continue
                 seen_urls.add(url)
-                results.append({
-                    "title": hit.get("title", ""),
-                    "url": url,
-                    "points": hit.get("points", 0),
-                    "comments": hit.get("num_comments", 0),
-                    "author": hit.get("author", ""),
-                    "date": (hit.get("created_at", ""))[:10],
-                    "source": "Hacker News",
-                })
+                results.append(
+                    {
+                        "title": hit.get("title", ""),
+                        "url": url,
+                        "points": hit.get("points", 0),
+                        "comments": hit.get("num_comments", 0),
+                        "author": hit.get("author", ""),
+                        "date": (hit.get("created_at", ""))[:10],
+                        "source": "Hacker News",
+                    }
+                )
         except Exception:
             pass
 
@@ -363,15 +348,17 @@ async def _search_articles(query: str, limit: int = 10) -> list[dict]:
                 if url in seen_urls:
                     continue
                 seen_urls.add(url)
-                results.append({
-                    "title": item.get("title", ""),
-                    "url": url,
-                    "points": item.get("positive_reactions_count", 0),
-                    "comments": item.get("comments_count", 0),
-                    "author": item.get("user", {}).get("name", ""),
-                    "date": (item.get("published_at", ""))[:10],
-                    "source": "dev.to",
-                })
+                results.append(
+                    {
+                        "title": item.get("title", ""),
+                        "url": url,
+                        "points": item.get("positive_reactions_count", 0),
+                        "comments": item.get("comments_count", 0),
+                        "author": item.get("user", {}).get("name", ""),
+                        "date": (item.get("published_at", ""))[:10],
+                        "source": "dev.to",
+                    }
+                )
         except Exception:
             pass
 

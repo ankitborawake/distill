@@ -86,8 +86,17 @@ def normalize_url(url: str) -> str:
     path = parsed.path.rstrip("/") or "/"
     # Strip tracking params
     params_to_strip = {
-        "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-        "ref", "source", "gi", "ocid", "fbclid", "gclid",
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_term",
+        "utm_content",
+        "ref",
+        "source",
+        "gi",
+        "ocid",
+        "fbclid",
+        "gclid",
     }
     query_params = parse_qs(parsed.query)
     filtered = {k: v for k, v in query_params.items() if k not in params_to_strip}
@@ -320,9 +329,7 @@ class Database:
 
     def get_stats(self) -> dict:
         stats = {}
-        stats["total_articles"] = self.conn.execute(
-            "SELECT COUNT(*) FROM articles"
-        ).fetchone()[0]
+        stats["total_articles"] = self.conn.execute("SELECT COUNT(*) FROM articles").fetchone()[0]
         stats["unique_articles"] = self.conn.execute(
             "SELECT COUNT(*) FROM articles WHERE is_duplicate = 0"
         ).fetchone()[0]
@@ -380,9 +387,7 @@ class Database:
             results.append((article, score))
         return results
 
-    def get_articles_by_ids(
-        self, article_ids: list[int]
-    ) -> list[tuple[Article, ScoreBreakdown]]:
+    def get_articles_by_ids(self, article_ids: list[int]) -> list[tuple[Article, ScoreBreakdown]]:
         if not article_ids:
             return []
         placeholders = ",".join("?" for _ in article_ids)
@@ -441,8 +446,6 @@ class Database:
             "(SELECT id FROM articles WHERE collected_at < ?)",
             (before, before),
         )
-        cursor = self.conn.execute(
-            "DELETE FROM articles WHERE collected_at < ?", (before,)
-        )
+        cursor = self.conn.execute("DELETE FROM articles WHERE collected_at < ?", (before,))
         self.conn.commit()
         return cursor.rowcount

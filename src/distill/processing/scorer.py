@@ -191,7 +191,7 @@ a trusted source is still shallow.
 Be VERY strict. Most shared links deserve low scores. A viral tweet is still just a tweet.
 
 Respond in JSON only:
-{{"technical_depth": 0.X, "novelty": 0.X, "applicability": 0.X, "reasoning": "1-2 sentences about the actual article quality"}}"""
+{{"technical_depth": 0.X, "novelty": 0.X, "applicability": 0.X, "reasoning": "1-2 sentences about the actual article quality"}}"""  # noqa: E501
 
 
 async def score_with_llm(
@@ -216,7 +216,11 @@ async def score_with_llm(
         if is_slack:
             web_signals = await _fetch_web_signals(article.url, trusted_domains)
             prompt = _build_slack_prompt(
-                article, web_signals, interest_keywords, rss_authors, trusted_curators,
+                article,
+                web_signals,
+                interest_keywords,
+                rss_authors,
+                trusted_curators,
             )
         else:
             content_preview = (article.content_text or "")[:3000]
@@ -319,11 +323,15 @@ async def score_articles(db: Database, config: dict) -> int:
 
     if has_api_key:
         llm_eligible = [
-            a for a in unscored
+            a
+            for a in unscored
             if a.source.value == "slack"  # Slack: always LLM-score, even without content_text
             or (
                 a.content_text
-                and ((a.points or 0) >= min_engagement_by_source.get(a.source.value, min_engagement) or a.points is None)
+                and (
+                    (a.points or 0) >= min_engagement_by_source.get(a.source.value, min_engagement)
+                    or a.points is None
+                )
             )
         ]
         llm_ids = {a.id for a in llm_eligible}

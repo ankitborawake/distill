@@ -106,9 +106,7 @@ async def _collect_async(db: Database, config: dict, source_filter: str | None =
                 result = db.insert_article(article)
                 if result is not None:
                     inserted += 1
-            console.print(
-                f"    → {len(articles)} found, {inserted} new"
-            )
+            console.print(f"    → {len(articles)} found, {inserted} new")
             total += inserted
         except Exception as e:
             console.print(f"    [red]Error: {e}[/red]")
@@ -283,9 +281,7 @@ def serve(
         web_app = create_app(config)
         uvicorn.run(web_app, host=host, port=port)
     except ImportError:
-        console.print(
-            "[red]Web deps not installed. Run: uv add fastapi uvicorn jinja2[/red]"
-        )
+        console.print("[red]Web deps not installed. Run: uv add fastapi uvicorn jinja2[/red]")
 
 
 @app.command()
@@ -334,9 +330,7 @@ def qa(
 
     for tool in ("rodney", "showboat"):
         if not shutil.which(tool):
-            console.print(
-                f"[red]{tool} not found. Install with: uv tool install {tool}[/red]"
-            )
+            console.print(f"[red]{tool} not found. Install with: uv tool install {tool}[/red]")
             raise typer.Exit(1)
 
     # Check server is running
@@ -401,7 +395,8 @@ def qa(
         result = _rodney("count", ".article-row", check=False)
         article_count = result.stdout.strip()
         _showboat(
-            "note", str(report_path),
+            "note",
+            str(report_path),
             f"- Articles page: **{article_count}** article rows rendered",
         )
         console.print(f"    Articles: {article_count} rows")
@@ -410,7 +405,8 @@ def qa(
         result = _rodney("exists", "nav a.active", check=False)
         nav_ok = result.returncode == 0
         _showboat(
-            "note", str(report_path),
+            "note",
+            str(report_path),
             f"- Nav active state: {'PASS' if nav_ok else 'FAIL'}",
         )
         console.print(f"    Nav active state: {'PASS' if nav_ok else 'FAIL'}")
@@ -429,7 +425,8 @@ def qa(
         _showboat("note", str(report_path), "### Search test: 'Claude Code'")
         _showboat("image", str(report_path), search_img)
         _showboat(
-            "note", str(report_path),
+            "note",
+            str(report_path),
             f"- Search returned **{search_count}** results",
         )
         console.print(f"    Search 'Claude Code': {search_count} results")
@@ -440,7 +437,8 @@ def qa(
         result = _rodney("count", ".stat-card", check=False)
         stat_count = result.stdout.strip()
         _showboat(
-            "note", str(report_path),
+            "note",
+            str(report_path),
             f"- Stats page: **{stat_count}** stat cards",
         )
         console.print(f"    Stats: {stat_count} cards")
@@ -451,7 +449,8 @@ def qa(
         result = _rodney("count", "button[type=submit]", check=False)
         btn_count = result.stdout.strip()
         _showboat(
-            "note", str(report_path),
+            "note",
+            str(report_path),
             f"- Podcasts page: **{btn_count}** action buttons",
         )
         console.print(f"    Podcasts: {btn_count} buttons")
@@ -474,7 +473,8 @@ def qa(
                 else f"WARN ({len(unnamed_links)}/{len(links)} links missing names)"
             )
             _showboat(
-                "note", str(report_path),
+                "note",
+                str(report_path),
                 f"- **{label}** links: {link_status}",
             )
             console.print(f"    {label} links: {link_status}")
@@ -492,7 +492,8 @@ def qa(
                 else f"WARN ({len(unnamed_fields)}/{len(all_fields)} fields missing labels)"
             )
             _showboat(
-                "note", str(report_path),
+                "note",
+                str(report_path),
                 f"- **{label}** form fields: {field_status}",
             )
             console.print(f"    {label} form fields: {field_status}")
@@ -504,7 +505,8 @@ def qa(
         headings = _parse_ax_results(result.stdout)
         heading_names = [_ax_name(h) for h in headings]
         _showboat(
-            "note", str(report_path),
+            "note",
+            str(report_path),
             f"- **Articles** heading hierarchy: {', '.join(heading_names[:5])}",
         )
         console.print(f"    Heading hierarchy: {', '.join(heading_names[:5])}")
@@ -539,7 +541,9 @@ def _ax_name(node: dict) -> str:
 
 @app.command()
 def ingest(
-    file: Annotated[Path, typer.Argument(help="JSON file with CollectedArticle list (use - for stdin)")],
+    file: Annotated[
+        Path, typer.Argument(help="JSON file with CollectedArticle list (use - for stdin)")
+    ],
     db: Annotated[Path | None, typer.Option("--db", help="Path to SQLite database")] = None,
     config_path: Annotated[Path | None, typer.Option("--config")] = None,
 ) -> None:
@@ -607,7 +611,9 @@ def archive(config_path: Annotated[Path | None, typer.Option("--config")] = None
         console.print("  [yellow]Skipping podcast (dependencies not installed)[/yellow]")
 
     # Cache this week's top articles to prevent repeats next week
-    top_articles = db.get_top_articles(limit=top_n, week_start=week_start, week_end=week_end, exclude_last_week=False)
+    top_articles = db.get_top_articles(
+        limit=top_n, week_start=week_start, week_end=week_end, exclude_last_week=False
+    )
     if top_articles:
         db.save_weekly_cache(label, [a for a, _ in top_articles])
         console.print(f"  Cached {len(top_articles)} articles for cross-week dedup")

@@ -6,7 +6,7 @@ import feedparser
 import httpx
 
 from distill.models import CollectedArticle, Source
-from distill.processing.extractor import fetch_article_content, resolve_tweet_url
+from distill.processing.extractor import ExtractionRequest, extract_articles
 
 
 class RSSCollector:
@@ -28,37 +28,28 @@ class RSSCollector:
                     resp.raise_for_status()
                     parsed = feedparser.parse(resp.text)
                     limit = feed_info.get("max_results", 20)
+                    feed_articles = []
+                    requests = []
                     for entry in parsed.entries[:limit]:
                         article = self._parse_entry(entry, name)
                         if article:
-                            article = await self._fetch_content(client, article, entry)
-                            articles.append(article)
+                            feed_articles.append(article)
+                            requests.append(
+                                ExtractionRequest(
+                                    url=article.url,
+                                    hint_text=self._entry_text(entry),
+                                )
+                            )
+                    results = await extract_articles(requests)
+                    for article, result in zip(feed_articles, results, strict=True):
+                        article.url = result.url
+                        article.content_text = result.content
+                        article.content_length = result.content_length or None
+                        articles.append(article)
                 except Exception:
                     continue
 
         return articles
-
-    async def _fetch_content(
-        self,
-        client: httpx.AsyncClient,
-        article: CollectedArticle,
-        entry: dict,
-    ) -> CollectedArticle:
-        url = article.url
-
-        # Resolve tweet URLs using feedparser hint text before any extra HTTP call
-        if "twitter.com" in url or "x.com" in url:
-            hint = self._entry_text(entry)
-            resolved = await resolve_tweet_url(client, url, hint_text=hint)
-            if resolved != url:
-                article.url = resolved
-                url = resolved
-
-        content = await fetch_article_content(client, url)
-        if content:
-            article.content_text = content
-            article.content_length = len(content)
-        return article
 
     def _entry_text(self, entry: dict) -> str:
         parts = [entry.get("summary", "")]

@@ -11,6 +11,7 @@ import httpx
 from distill.db import Database
 from distill.models import Article, ScoreBreakdown
 from distill.outputs.digest import get_week_range
+from distill.processing.extractor import extract_articles
 
 
 def _collect_weekly_articles(
@@ -91,38 +92,9 @@ def _build_source_text(
     return "\n".join(lines)
 
 
-# ---------------------------------------------------------------------------
-# Content fetching (shared by edge-tts and notebooklm providers)
-# ---------------------------------------------------------------------------
-
-
-async def _fetch_article_content(url: str) -> str | None:
-    try:
-        import trafilatura
-
-        async with httpx.AsyncClient(
-            timeout=20,
-            follow_redirects=True,
-            headers={"User-Agent": "distill/0.1"},
-        ) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            content = trafilatura.extract(
-                resp.text,
-                include_comments=False,
-                include_tables=True,
-                favor_precision=True,
-            )
-            return content if content and len(content) > 100 else None
-    except Exception:
-        return None
-
-
 async def _gather_article_texts(
     articles: list[tuple[Article, ScoreBreakdown]],
 ) -> dict[int, str]:
-    import asyncio
-
     texts = {}
     fetch_tasks = {}
 
@@ -133,12 +105,10 @@ async def _gather_article_texts(
             fetch_tasks[article.id] = article.url
 
     if fetch_tasks:
-        results = await asyncio.gather(
-            *[_fetch_article_content(url) for url in fetch_tasks.values()]
-        )
-        for (aid, _), content in zip(fetch_tasks.items(), results):
-            if content:
-                texts[aid] = content[:3000]
+        results = await extract_articles(fetch_tasks.values())
+        for (aid, _), result in zip(fetch_tasks.items(), results, strict=True):
+            if result.content:
+                texts[aid] = result.content[:3000]
 
     return texts
 

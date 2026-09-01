@@ -188,55 +188,34 @@ def create_app(config: dict) -> FastAPI:
 
     @app.post("/add", response_class=HTMLResponse)
     async def add_links_submit(request: Request, urls: str = Form("")):
-        import httpx
-        import trafilatura
+        from distill.processing.extractor import extract_articles
 
         raw_urls = [u.strip() for u in urls.splitlines() if u.strip()]
         results = []
         db = get_db()
-
-        async with httpx.AsyncClient(
-            timeout=20,
-            follow_redirects=True,
-            headers={"User-Agent": "distill/0.1"},
-        ) as client:
-            for url in raw_urls:
-                if not url.startswith(("http://", "https://")):
-                    url = "https://" + url
-                entry = {"url": url, "status": "error", "title": None}
-                try:
-                    resp = await client.get(url)
-                    resp.raise_for_status()
-                    html = resp.text
-
-                    title = _extract_title(html, url)
-                    entry["title"] = title
-
-                    article = CollectedArticle(
-                        url=url,
-                        title=title,
-                        source=Source.RSS,
-                        source_id=f"manual:{url}",
-                        tags=["manual"],
-                    )
-                    aid = db.insert_article(article)
-                    if aid is None:
-                        entry["status"] = "exists"
-                    else:
-                        content = trafilatura.extract(
-                            html,
-                            include_comments=False,
-                            include_tables=True,
-                            favor_precision=True,
-                        )
-                        if content and len(content) > 100:
-                            db.update_content(aid, content)
-                            entry["status"] = "extracted"
-                        else:
-                            entry["status"] = "added"
-                except Exception as e:
-                    entry["status"] = f"error: {e}"
-                results.append(entry)
+        normalized_urls = [
+            url if url.startswith(("http://", "https://")) else "https://" + url for url in raw_urls
+        ]
+        extracted = await extract_articles(normalized_urls)
+        for url, result in zip(normalized_urls, extracted, strict=True):
+            title = result.title or result.url
+            entry = {"url": result.url, "status": "error", "title": title}
+            article = CollectedArticle(
+                url=result.url,
+                title=title,
+                source=Source.RSS,
+                source_id=f"manual:{url}",
+                tags=["manual"],
+            )
+            aid = db.insert_article(article)
+            if aid is None:
+                entry["status"] = "exists"
+            elif result.content:
+                db.update_content(aid, result.content)
+                entry["status"] = "extracted"
+            else:
+                entry["status"] = "added"
+            results.append(entry)
 
         db.close()
         return templates.TemplateResponse(request, "add.html", {"results": results})
@@ -259,36 +238,20 @@ def create_app(config: dict) -> FastAPI:
         title: str = Form(""),
         query: str = Form(""),
     ):
-        import httpx
-        import trafilatura
+        from distill.processing.extractor import extract_article
 
         db = get_db()
+        result = await extract_article(url)
         article = CollectedArticle(
-            url=url,
-            title=title,
+            url=result.url,
+            title=title or result.title or result.url,
             source=Source.RSS,
             source_id=f"manual:{url}",
             tags=["manual"],
         )
         aid = db.insert_article(article)
-        if aid is not None:
-            try:
-                async with httpx.AsyncClient(
-                    timeout=20,
-                    follow_redirects=True,
-                    headers={"User-Agent": "distill/0.1"},
-                ) as client:
-                    resp = await client.get(url)
-                    content = trafilatura.extract(
-                        resp.text,
-                        include_comments=False,
-                        include_tables=True,
-                        favor_precision=True,
-                    )
-                    if content and len(content) > 100:
-                        db.update_content(aid, content)
-            except Exception:
-                pass
+        if aid is not None and result.content:
+            db.update_content(aid, result.content)
         db.close()
 
         # Re-run search to show updated results
@@ -365,15 +328,3 @@ async def _search_articles(query: str, limit: int = 10) -> list[dict]:
     # Sort by points descending, take top N
     results.sort(key=lambda x: x.get("points", 0), reverse=True)
     return results[:limit]
-
-
-def _extract_title(html: str, fallback: str) -> str:
-    import re
-
-    match = re.search(r"<title[^>]*>([^<]+)</title>", html, re.IGNORECASE)
-    if match:
-        return match.group(1).strip()
-    match = re.search(r'<meta\s+property="og:title"\s+content="([^"]+)"', html)
-    if match:
-        return match.group(1).strip()
-    return fallback

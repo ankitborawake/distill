@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from distill.config import get_db_path
@@ -11,6 +12,7 @@ from distill.processing.recommendation import ReadingSlateRequest, select_readin
 from distill.processing.text import plain_text_excerpt
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+STATIC_DIR = Path(__file__).parent.parent / "static"
 
 _generating: bool = False
 _last_error: str | None = None
@@ -24,6 +26,7 @@ def _build_slack_channel_map(config: dict) -> dict[str, str]:
 
 def create_app(config: dict) -> FastAPI:
     app = FastAPI(title="Distill")
+    app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
     templates.env.filters["plain_text_excerpt"] = plain_text_excerpt
     db_path = get_db_path(config)

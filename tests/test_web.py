@@ -28,7 +28,12 @@ def test_index_empty_db():
     client = TestClient(app)
     resp = client.get("/")
     assert resp.status_code == 200
-    assert "Distill" in resp.text
+    assert "<title>Distill — AI Engineering Signal</title>" in resp.text
+    assert 'rel="icon"' in resp.text
+
+    favicon = client.get("/static/favicon.svg")
+    assert favicon.status_code == 200
+    assert favicon.headers["content-type"].startswith("image/svg+xml")
 
 
 def test_index_with_articles():

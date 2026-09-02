@@ -28,31 +28,61 @@ def select_reading_slate(
         week_end=request.week_end,
         exclude_last_week=request.exclude_last_week,
     )
-    return _diversify(candidates, request.limit, slate_config)
+    qualified = [item for item in candidates if meets_quality_gate(item[1], slate_config)]
+    selected = _diversify(qualified, request.limit, slate_config)
+    if not slate_config.get("fill_to_limit", False) or len(selected) >= request.limit:
+        return selected
+
+    selected_ids = {article.id for article, _ in selected}
+    fallback_minimum_relevance = float(slate_config.get("fallback_minimum_relevance", 0.4))
+    fallback = [
+        item
+        for item in candidates
+        if item[0].id not in selected_ids
+        and item[1].status == "success"
+        and item[1].relevance >= fallback_minimum_relevance
+    ]
+    return _diversify(
+        fallback,
+        request.limit,
+        slate_config,
+        selected=selected,
+        relax_caps=True,
+    )
 
 
-def _diversify(candidates: list[ScoredArticle], limit: int, config: dict) -> list[ScoredArticle]:
-    minimum_score = float(config.get("minimum_score", 0.35))
-    minimum_relevance = float(config.get("minimum_relevance", 0))
-    minimum_applicability = float(config.get("minimum_applicability", 0))
-    minimum_evidence_quality = float(config.get("minimum_evidence_quality", 0))
-    maximum_noise_penalty = float(config.get("maximum_noise_penalty", 1))
+def meets_quality_gate(score: ScoreBreakdown, config: dict) -> bool:
+    """Return whether an assessment qualifies for the primary Reading slate."""
+    return (
+        score.status == "success"
+        and score.composite_score >= float(config.get("minimum_score", 0.35))
+        and score.relevance >= float(config.get("minimum_relevance", 0))
+        and score.applicability >= float(config.get("minimum_applicability", 0))
+        and score.evidence_quality >= float(config.get("minimum_evidence_quality", 0))
+        and score.noise_penalty <= float(config.get("maximum_noise_penalty", 1))
+    )
+
+
+def _diversify(
+    candidates: list[ScoredArticle],
+    limit: int,
+    config: dict,
+    *,
+    selected: list[ScoredArticle] | None = None,
+    relax_caps: bool = False,
+) -> list[ScoredArticle]:
     diversity_strength = float(config.get("diversity_strength", 0.15))
     max_per_domain = max(1, int(config.get("max_per_domain", 2)))
     max_per_source = max(1, int(config.get("max_per_source", max(2, limit * 3 // 5))))
-    remaining = [
-        item
-        for item in candidates
-        if item[1].status == "success"
-        and item[1].composite_score >= minimum_score
-        and item[1].relevance >= minimum_relevance
-        and item[1].applicability >= minimum_applicability
-        and item[1].evidence_quality >= minimum_evidence_quality
-        and item[1].noise_penalty <= maximum_noise_penalty
-    ]
-    selected: list[ScoredArticle] = []
+    remaining = list(candidates)
+    selected = list(selected or [])
     domain_counts: dict[str, int] = {}
     source_counts: dict[str, int] = {}
+    for article, _ in selected:
+        domain = _domain(article)
+        domain_counts[domain] = domain_counts.get(domain, 0) + 1
+        source = article.source.value
+        source_counts[source] = source_counts.get(source, 0) + 1
 
     while remaining and len(selected) < limit:
         eligible = [
@@ -67,6 +97,8 @@ def _diversify(candidates: list[ScoredArticle], limit: int, config: dict) -> lis
                 for item in remaining
                 if domain_counts.get(_domain(item[0]), 0) < max_per_domain
             ]
+        if not eligible and relax_caps:
+            eligible = remaining
         if not eligible:
             break
         best = max(

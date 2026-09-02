@@ -102,3 +102,60 @@ def test_reading_slate_requires_each_personal_quality_gate(tmp_db):
     )
 
     assert [article.id for article, _ in slate] == [useful]
+
+
+def test_reading_slate_backfills_requested_limit_with_relevant_articles(tmp_db):
+    qualified = _insert_assessed(tmp_db, 1, "qualified.example", 0.8)
+    fallback = _insert_assessed(tmp_db, 2, "qualified.example", 0.3)
+    unrelated = _insert_assessed(tmp_db, 3, "unrelated.example", 0.7)
+    tmp_db.insert_score(
+        qualified,
+        ScoreBreakdown(
+            composite_score=0.8,
+            relevance=0.8,
+            applicability=0.8,
+            evidence_quality=0.8,
+            score_version="v1",
+            status="success",
+        ),
+    )
+    tmp_db.insert_score(
+        fallback,
+        ScoreBreakdown(
+            composite_score=0.3,
+            relevance=0.6,
+            applicability=0.4,
+            evidence_quality=0.3,
+            score_version="v1",
+            status="success",
+        ),
+    )
+    tmp_db.insert_score(
+        unrelated,
+        ScoreBreakdown(
+            composite_score=0.7,
+            relevance=0.1,
+            applicability=0.8,
+            evidence_quality=0.8,
+            score_version="v1",
+            status="success",
+        ),
+    )
+
+    slate = select_reading_slate(
+        tmp_db,
+        {
+            "recommendation": {
+                "minimum_score": 0.35,
+                "minimum_relevance": 0.6,
+                "minimum_applicability": 0.5,
+                "minimum_evidence_quality": 0.4,
+                "fill_to_limit": True,
+                "fallback_minimum_relevance": 0.4,
+                "max_per_domain": 1,
+            }
+        },
+        ReadingSlateRequest(limit=2, exclude_last_week=False),
+    )
+
+    assert [article.id for article, _ in slate] == [qualified, fallback]

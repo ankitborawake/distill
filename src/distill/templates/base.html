@@ -250,6 +250,21 @@
 
         /* Article list (card rows) */
         .article-list { list-style: none; padding: 0; margin: 0; }
+        .slate-divider {
+            display: flex;
+            align-items: baseline;
+            gap: 0.7rem;
+            margin: 1.75rem 0 0.8rem;
+            color: var(--text-bright);
+            font-weight: 600;
+        }
+        .slate-divider::after {
+            content: '';
+            height: 1px;
+            flex: 1;
+            background: var(--border);
+        }
+        .slate-divider small { color: var(--text-muted); font-weight: 400; }
         .article-row {
             display: flex;
             align-items: flex-start;

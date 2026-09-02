@@ -28,6 +28,12 @@
 {% if articles %}
 <ul class="article-list">
     {% for article, score in articles %}
+    {% if quality_count is defined and loop.index == quality_count + 1 %}
+    <li class="slate-divider">
+        <span>More to explore</span>
+        <small>Relevant options that did not meet every recommendation threshold</small>
+    </li>
+    {% endif %}
     <li class="article-row">
         <span class="article-rank">{{ loop.index }}</span>
         <div class="article-body">

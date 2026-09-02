@@ -55,6 +55,8 @@ def _default_config() -> dict:
             "minimum_applicability": 0.5,
             "minimum_evidence_quality": 0.4,
             "maximum_noise_penalty": 0.45,
+            "fill_to_limit": True,
+            "fallback_minimum_relevance": 0.4,
             "candidate_multiplier": 5,
             "diversity_strength": 0.15,
             "max_per_domain": 2,

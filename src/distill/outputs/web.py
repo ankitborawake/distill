@@ -8,7 +8,11 @@ from fastapi.templating import Jinja2Templates
 
 from distill.config import get_db_path
 from distill.db import Database
-from distill.processing.recommendation import ReadingSlateRequest, select_reading_slate
+from distill.processing.recommendation import (
+    ReadingSlateRequest,
+    meets_quality_gate,
+    select_reading_slate,
+)
 from distill.processing.text import plain_text_excerpt
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
@@ -50,6 +54,11 @@ def create_app(config: dict) -> FastAPI:
         if source:
             articles = [(a, s) for a, s in articles if a.source.value == source]
 
+        recommendation_config = config.get("recommendation", {})
+        quality_count = sum(
+            meets_quality_gate(score, recommendation_config) for _, score in articles
+        )
+
         sources = list(db.get_stats().get("by_source", {}).keys())
         db.close()
 
@@ -61,6 +70,7 @@ def create_app(config: dict) -> FastAPI:
                 "sources": sources,
                 "source_filter": source,
                 "limit": limit,
+                "quality_count": quality_count,
                 "slack_channel_map": slack_channel_map,
             },
         )

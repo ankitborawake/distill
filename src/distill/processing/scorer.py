@@ -1,7 +1,9 @@
 """Article scoring: engagement normalization + Claude LLM-as-judge."""
 
+import asyncio
 import json
 import os
+from collections.abc import Callable
 from hashlib import sha256
 from statistics import mean, stdev
 from urllib.parse import urlparse
@@ -55,6 +57,7 @@ def assessment_version(config: dict, model: str) -> str:
         "model": model,
         "reader_profile": config.get("reader_profile", {}),
         "weights": config.get("scoring", {}).get("weights", {}),
+        "content_preview_chars": config.get("scoring", {}).get("content_preview_chars", 6000),
     }
     encoded = json.dumps(material, sort_keys=True, separators=(",", ":")).encode()
     return sha256(encoded).hexdigest()[:16]
@@ -195,6 +198,7 @@ async def score_with_llm(
     articles: list[Article],
     model: str = "claude-sonnet-4-5-20250929",
     config: dict | None = None,
+    concurrency: int = 5,
 ) -> dict[int, ScoreBreakdown]:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -205,8 +209,10 @@ async def score_with_llm(
     trusted_curators = _get_trusted_curators(config)
     trusted_domains = _extract_rss_domains(config)
 
-    results = {}
-    for article in articles:
+    results: dict[int, ScoreBreakdown] = {}
+    semaphore = asyncio.Semaphore(max(1, concurrency))
+
+    async def assess(article: Article, client: httpx.AsyncClient) -> None:
         external_signals = []
         if article.source.value == "slack":
             web_signals = await _fetch_web_signals(article.url, trusted_domains)
@@ -227,7 +233,7 @@ async def score_with_llm(
         prompt = _build_assessment_prompt(article, config, external_signals)
 
         try:
-            async with httpx.AsyncClient(timeout=60) as client:
+            async with semaphore:
                 resp = await client.post(
                     "https://api.anthropic.com/v1/messages",
                     headers={
@@ -259,20 +265,31 @@ async def score_with_llm(
                     recommended_action=parsed.get("recommended_action", ""),
                 )
         except Exception:
-            continue
+            return
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        await asyncio.gather(*(assess(article, client) for article in articles))
 
     return results
 
 
-async def score_articles(db: Database, config: dict, *, force: bool = False) -> int:
+async def score_articles(
+    db: Database,
+    config: dict,
+    *,
+    force: bool = False,
+    on_progress: Callable[[int, int], None] | None = None,
+) -> int:
     scoring_config = config.get("scoring", {})
     model = scoring_config.get("model", "claude-sonnet-4-5-20250929")
     weights = scoring_config.get("weights", {})
     batch_size = scoring_config.get("batch_size", 5)
+    concurrency = scoring_config.get("concurrency", 5)
+    max_age_days = scoring_config.get("assessment_max_age_days", 45)
     has_api_key = bool(os.environ.get("ANTHROPIC_API_KEY"))
     version = assessment_version(config, model)
 
-    pending = db.get_articles_for_assessment(version, force=force)
+    pending = db.get_articles_for_assessment(version, force=force, max_age_days=max_age_days)
     all_articles = db.get_all_articles(non_duplicate_only=True)
     scored_count = 0
 
@@ -306,10 +323,14 @@ async def score_articles(db: Database, config: dict, *, force: bool = False) -> 
         )
         db.insert_score(article.id, score)
         scored_count += 1
+    if on_progress and engagement_only:
+        on_progress(scored_count, len(pending))
 
     for i in range(0, len(llm_eligible), batch_size):
         batch = llm_eligible[i : i + batch_size]
-        llm_scores = await score_with_llm(batch, model=model, config=config)
+        llm_scores = await score_with_llm(
+            batch, model=model, config=config, concurrency=concurrency
+        )
 
         for article in batch:
             eng = compute_engagement_score(article, all_articles)
@@ -331,5 +352,7 @@ async def score_articles(db: Database, config: dict, *, force: bool = False) -> 
                 )
             db.insert_score(article.id, score)
             scored_count += 1
+        if on_progress:
+            on_progress(scored_count, len(pending))
 
     return scored_count

@@ -26,7 +26,9 @@ def _default_config() -> dict:
         },
         "scoring": {
             "model": "claude-sonnet-4-5-20250929",
-            "batch_size": 5,
+            "batch_size": 20,
+            "concurrency": 10,
+            "assessment_max_age_days": 45,
             "content_preview_chars": 6000,
             "weights": {
                 "engagement": 0.05,

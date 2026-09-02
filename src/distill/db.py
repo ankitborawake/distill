@@ -287,13 +287,20 @@ class Database:
         return [self._row_to_article(r) for r in rows]
 
     def get_articles_for_assessment(
-        self, score_version: str, *, force: bool = False
+        self,
+        score_version: str,
+        *,
+        force: bool = False,
+        max_age_days: int | None = None,
     ) -> list[Article]:
         """Return Articles whose assessment is missing, stale, or retryable."""
         query = """SELECT a.* FROM articles a
                    LEFT JOIN scores s ON a.id = s.article_id
                    WHERE a.is_duplicate = 0"""
         params: list = []
+        if max_age_days is not None:
+            query += " AND datetime(COALESCE(a.published_at, a.collected_at)) >= datetime('now', ?)"
+            params.append(f"-{max(0, max_age_days)} days")
         if not force:
             query += " AND (s.id IS NULL OR s.status != 'success' OR s.score_version != ?)"
             params.append(score_version)

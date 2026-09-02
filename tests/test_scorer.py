@@ -81,6 +81,13 @@ def test_assessment_version_changes_with_reader_profile():
     assert first != second
 
 
+def test_assessment_version_changes_with_evidence_window():
+    first = assessment_version({"scoring": {"content_preview_chars": 3000}}, "model")
+    second = assessment_version({"scoring": {"content_preview_chars": 6000}}, "model")
+
+    assert first != second
+
+
 @pytest.mark.asyncio
 async def test_failed_assessment_is_capped_and_remains_retryable(tmp_db):
     article_id = tmp_db.insert_article(

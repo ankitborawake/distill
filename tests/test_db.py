@@ -1,4 +1,4 @@
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 from distill.db import normalize_url
 from distill.models import CollectedArticle, ScoreBreakdown, Source
@@ -157,6 +157,29 @@ def test_article_assessment_version_controls_rescoring(tmp_db):
     assert [article.id for article in tmp_db.get_articles_for_assessment("profile-v2")] == [
         article_id
     ]
+
+
+def test_article_assessment_respects_recency_horizon(tmp_db):
+    recent_id = tmp_db.insert_article(
+        CollectedArticle(
+            url="https://example.com/recent",
+            title="Recent",
+            source=Source.RSS,
+            published_at=datetime.now(tz=UTC),
+        )
+    )
+    tmp_db.insert_article(
+        CollectedArticle(
+            url="https://example.com/old",
+            title="Old",
+            source=Source.RSS,
+            published_at=datetime.now(tz=UTC) - timedelta(days=90),
+        )
+    )
+
+    pending = tmp_db.get_articles_for_assessment("current", max_age_days=45)
+
+    assert [article.id for article in pending] == [recent_id]
 
 
 def test_digest_and_podcast_persistence(tmp_db, tmp_path):

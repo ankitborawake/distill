@@ -143,7 +143,10 @@ def score(
 
     from distill.processing.scorer import score_articles
 
-    count = asyncio.run(score_articles(db, config, force=rescore))
+    def show_progress(completed: int, total: int) -> None:
+        console.print(f"  Assessed {completed}/{total}")
+
+    count = asyncio.run(score_articles(db, config, force=rescore, on_progress=show_progress))
     db.close()
     console.print(f"[green]Scored {count} articles.[/green]")
 

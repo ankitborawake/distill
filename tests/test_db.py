@@ -182,6 +182,26 @@ def test_article_assessment_respects_recency_horizon(tmp_db):
     assert [article.id for article in pending] == [recent_id]
 
 
+def test_incomplete_assessment_waits_for_new_evidence(tmp_db):
+    article_id = tmp_db.insert_article(
+        CollectedArticle(
+            url="https://example.com/incomplete",
+            title="Incomplete",
+            source=Source.HACKERNEWS,
+        )
+    )
+    tmp_db.insert_score(
+        article_id,
+        ScoreBreakdown(score_version="current", status="incomplete"),
+    )
+
+    assert tmp_db.get_articles_for_assessment("current") == []
+
+    tmp_db.update_content(article_id, "Newly extracted implementation evidence")
+
+    assert [a.id for a in tmp_db.get_articles_for_assessment("current")] == [article_id]
+
+
 def test_digest_and_podcast_persistence(tmp_db, tmp_path):
     tmp_db.insert_digest("2026-W36", "# Digest", 3)
 

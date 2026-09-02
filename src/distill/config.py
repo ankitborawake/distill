@@ -30,6 +30,7 @@ def _default_config() -> dict:
             "concurrency": 4,
             "max_retries": 3,
             "retry_base_seconds": 1,
+            "max_output_tokens": 768,
             "assessment_max_age_days": 45,
             "content_preview_chars": 6000,
             "weights": {

@@ -302,7 +302,15 @@ class Database:
             query += " AND datetime(COALESCE(a.published_at, a.collected_at)) >= datetime('now', ?)"
             params.append(f"-{max(0, max_age_days)} days")
         if not force:
-            query += " AND (s.id IS NULL OR s.status != 'success' OR s.score_version != ?)"
+            query += """ AND (
+                s.id IS NULL
+                OR s.score_version != ?
+                OR s.status IN ('failed', 'unavailable')
+                OR (s.status = 'incomplete' AND (
+                    a.content_text IS NOT NULL OR a.summary IS NOT NULL
+                    OR a.source = 'slack' OR a.tags LIKE '%"manual"%'
+                ))
+            )"""
             params.append(score_version)
         query += " ORDER BY COALESCE(a.points, 0) DESC"
         rows = self.conn.execute(query, params).fetchall()

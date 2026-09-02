@@ -215,6 +215,7 @@ async def score_with_llm(
     scoring_config = config.get("scoring", {})
     max_retries = max(0, int(scoring_config.get("max_retries", 3)))
     retry_base_seconds = max(0.0, float(scoring_config.get("retry_base_seconds", 1)))
+    max_output_tokens = max(256, int(scoring_config.get("max_output_tokens", 768)))
 
     async def assess(article: Article, client: httpx.AsyncClient) -> None:
         external_signals = []
@@ -249,7 +250,7 @@ async def score_with_llm(
                         },
                         json={
                             "model": model,
-                            "max_tokens": 384,
+                            "max_tokens": max_output_tokens,
                             "messages": [{"role": "user", "content": prompt}],
                         },
                     )

@@ -199,6 +199,7 @@ async def score_with_llm(
     model: str = "claude-sonnet-4-5-20250929",
     config: dict | None = None,
     concurrency: int = 5,
+    on_error: Callable[[int, str], None] | None = None,
 ) -> dict[int, ScoreBreakdown]:
     api_key = os.environ.get("ANTHROPIC_API_KEY")
     if not api_key:
@@ -211,6 +212,9 @@ async def score_with_llm(
 
     results: dict[int, ScoreBreakdown] = {}
     semaphore = asyncio.Semaphore(max(1, concurrency))
+    scoring_config = config.get("scoring", {})
+    max_retries = max(0, int(scoring_config.get("max_retries", 3)))
+    retry_base_seconds = max(0.0, float(scoring_config.get("retry_base_seconds", 1)))
 
     async def assess(article: Article, client: httpx.AsyncClient) -> None:
         external_signals = []
@@ -232,22 +236,24 @@ async def score_with_llm(
 
         prompt = _build_assessment_prompt(article, config, external_signals)
 
-        try:
-            async with semaphore:
-                resp = await client.post(
-                    "https://api.anthropic.com/v1/messages",
-                    headers={
-                        "x-api-key": api_key,
-                        "anthropic-version": "2023-06-01",
-                        "content-type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "max_tokens": 256,
-                        "messages": [{"role": "user", "content": prompt}],
-                    },
-                )
-                resp.raise_for_status()
+        last_error = "unknown assessment failure"
+        for attempt in range(max_retries + 1):
+            try:
+                async with semaphore:
+                    resp = await client.post(
+                        "https://api.anthropic.com/v1/messages",
+                        headers={
+                            "x-api-key": api_key,
+                            "anthropic-version": "2023-06-01",
+                            "content-type": "application/json",
+                        },
+                        json={
+                            "model": model,
+                            "max_tokens": 384,
+                            "messages": [{"role": "user", "content": prompt}],
+                        },
+                    )
+                    resp.raise_for_status()
                 data = resp.json()
                 text = data["content"][0]["text"]
                 text = text.strip()
@@ -264,8 +270,23 @@ async def score_with_llm(
                     reasoning=parsed.get("reasoning", ""),
                     recommended_action=parsed.get("recommended_action", ""),
                 )
-        except Exception:
-            return
+                return
+            except httpx.HTTPStatusError as error:
+                last_error = f"HTTP {error.response.status_code}"
+                retryable = error.response.status_code == 429 or error.response.status_code >= 500
+            except (httpx.TransportError, json.JSONDecodeError, KeyError, IndexError) as error:
+                last_error = type(error).__name__
+                retryable = True
+            except Exception as error:
+                last_error = type(error).__name__
+                retryable = False
+
+            if not retryable or attempt == max_retries:
+                break
+            await asyncio.sleep(retry_base_seconds * (2**attempt))
+
+        if on_error:
+            on_error(article.id, last_error)
 
     async with httpx.AsyncClient(timeout=60) as client:
         await asyncio.gather(*(assess(article, client) for article in articles))
@@ -328,8 +349,13 @@ async def score_articles(
 
     for i in range(0, len(llm_eligible), batch_size):
         batch = llm_eligible[i : i + batch_size]
+        failures: dict[int, str] = {}
         llm_scores = await score_with_llm(
-            batch, model=model, config=config, concurrency=concurrency
+            batch,
+            model=model,
+            config=config,
+            concurrency=concurrency,
+            on_error=failures.__setitem__,
         )
 
         for article in batch:
@@ -346,7 +372,10 @@ async def score_articles(
                 score = ScoreBreakdown(
                     engagement_score=eng,
                     composite_score=min(eng * 0.4, 0.4),
-                    reasoning="Article assessment failed; retained for retry",
+                    reasoning=(
+                        f"Article assessment failed ({failures.get(article.id, 'unknown')}); "
+                        "retained for retry"
+                    ),
                     score_version=version,
                     status="failed",
                 )

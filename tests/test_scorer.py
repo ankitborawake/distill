@@ -1,6 +1,8 @@
+import json
 from datetime import datetime
 from unittest.mock import AsyncMock, patch
 
+import httpx
 import pytest
 
 from distill.models import Article, CollectedArticle, ScoreBreakdown, Source
@@ -9,6 +11,7 @@ from distill.processing.scorer import (
     compute_composite_score,
     compute_engagement_score,
     score_articles,
+    score_with_llm,
 )
 
 
@@ -86,6 +89,59 @@ def test_assessment_version_changes_with_evidence_window():
     second = assessment_version({"scoring": {"content_preview_chars": 6000}}, "model")
 
     assert first != second
+
+
+@pytest.mark.asyncio
+async def test_llm_assessment_retries_rate_limit(monkeypatch):
+    article = _make_article(source=Source.RSS)
+    article.summary = "A production case study with measured results."
+    responses = [
+        httpx.Response(429, request=httpx.Request("POST", "https://api.anthropic.com")),
+        httpx.Response(
+            200,
+            request=httpx.Request("POST", "https://api.anthropic.com"),
+            json={
+                "content": [
+                    {
+                        "text": json.dumps(
+                            {
+                                "relevance": 0.9,
+                                "technical_depth": 0.8,
+                                "novelty": 0.7,
+                                "applicability": 0.9,
+                                "evidence_quality": 0.8,
+                                "noise_penalty": 0.1,
+                                "recommended_action": "Run the experiment",
+                                "reasoning": "Measured production evidence",
+                            }
+                        )
+                    }
+                ]
+            },
+        ),
+    ]
+
+    class FakeClient:
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def post(self, *args, **kwargs):
+            return responses.pop(0)
+
+    monkeypatch.setattr(
+        "distill.processing.scorer.httpx.AsyncClient", lambda **kwargs: FakeClient()
+    )
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test")
+
+    scores = await score_with_llm(
+        [article], config={"scoring": {"max_retries": 1, "retry_base_seconds": 0}}
+    )
+
+    assert scores[article.id].recommended_action == "Run the experiment"
+    assert responses == []
 
 
 @pytest.mark.asyncio

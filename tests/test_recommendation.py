@@ -57,3 +57,48 @@ def test_reading_slate_excludes_failed_assessments(tmp_db):
     )
 
     assert [article.id for article, _ in slate] == [successful]
+
+
+def test_reading_slate_requires_each_personal_quality_gate(tmp_db):
+    useful = _insert_assessed(tmp_db, 1, "useful.example", 0.8)
+    irrelevant = _insert_assessed(tmp_db, 2, "irrelevant.example", 0.8)
+    tmp_db.insert_score(
+        useful,
+        ScoreBreakdown(
+            composite_score=0.8,
+            relevance=0.8,
+            applicability=0.8,
+            evidence_quality=0.7,
+            noise_penalty=0.1,
+            score_version="v1",
+            status="success",
+        ),
+    )
+    tmp_db.insert_score(
+        irrelevant,
+        ScoreBreakdown(
+            composite_score=0.8,
+            relevance=0.1,
+            applicability=0.8,
+            evidence_quality=0.9,
+            noise_penalty=0,
+            score_version="v1",
+            status="success",
+        ),
+    )
+
+    slate = select_reading_slate(
+        tmp_db,
+        {
+            "recommendation": {
+                "minimum_score": 0.35,
+                "minimum_relevance": 0.6,
+                "minimum_applicability": 0.5,
+                "minimum_evidence_quality": 0.4,
+                "maximum_noise_penalty": 0.45,
+            }
+        },
+        ReadingSlateRequest(limit=5, exclude_last_week=False),
+    )
+
+    assert [article.id for article, _ in slate] == [useful]

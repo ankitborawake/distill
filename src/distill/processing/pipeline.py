@@ -106,7 +106,8 @@ async def run_pipeline(
 
         if on_stage:
             on_stage(PipelineStage.TRUNCATE)
-        truncated = db.truncate_content(excerpt_length=300)
+        evidence_chars = int(config.get("scoring", {}).get("content_preview_chars", 6000))
+        truncated = db.truncate_content(excerpt_length=evidence_chars)
 
         return PipelineResult(collection, extracted, deduplicated, scored, truncated)
     finally:

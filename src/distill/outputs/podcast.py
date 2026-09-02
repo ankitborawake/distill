@@ -9,15 +9,20 @@ from distill.models import Article, ScoreBreakdown
 from distill.outputs.digest import get_week_range
 from distill.outputs.podcast_providers import PodcastSource, get_podcast_provider
 from distill.processing.extractor import extract_articles
+from distill.processing.recommendation import ReadingSlateRequest, select_reading_slate
 
 
 def _collect_weekly_articles(
-    db: Database, top_n: int
+    db: Database, config: dict, top_n: int
 ) -> tuple[str, list[tuple[Article, ScoreBreakdown]]]:
     label, week_start, week_end = get_week_range()
-    top = db.get_top_articles(limit=top_n, week_start=week_start, week_end=week_end)
+    top = select_reading_slate(
+        db,
+        config,
+        ReadingSlateRequest(limit=top_n, week_start=week_start, week_end=week_end),
+    )
     if not top:
-        top = db.get_top_articles(limit=top_n)
+        top = select_reading_slate(db, config, ReadingSlateRequest(limit=top_n))
     manual = db.get_manual_articles(week_start=week_start, week_end=week_end)
 
     seen_ids = set()
@@ -83,7 +88,7 @@ async def generate_podcast(
     if article_ids:
         label, articles = _collect_ondemand_articles(db, article_ids)
     else:
-        label, articles = _collect_weekly_articles(db, top_n)
+        label, articles = _collect_weekly_articles(db, config, top_n)
 
     if not articles:
         return None

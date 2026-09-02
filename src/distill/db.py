@@ -36,11 +36,17 @@ CREATE TABLE IF NOT EXISTS scores (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     article_id INTEGER NOT NULL UNIQUE REFERENCES articles(id),
     engagement_score REAL DEFAULT 0,
+    relevance REAL DEFAULT 0,
     technical_depth REAL DEFAULT 0,
     novelty REAL DEFAULT 0,
     applicability REAL DEFAULT 0,
+    evidence_quality REAL DEFAULT 0,
+    noise_penalty REAL DEFAULT 0,
     composite_score REAL DEFAULT 0,
     reasoning TEXT,
+    recommended_action TEXT,
+    score_version TEXT DEFAULT '',
+    status TEXT DEFAULT 'success',
     scored_at TEXT NOT NULL
 );
 
@@ -114,7 +120,25 @@ class Database:
 
     def init_schema(self):
         self.conn.executescript(SCHEMA)
+        self._ensure_score_columns()
         self.conn.commit()
+
+    def _ensure_score_columns(self) -> None:
+        """Add Article assessment columns to databases created by older versions."""
+        existing = {
+            row["name"] for row in self.conn.execute("PRAGMA table_info(scores)").fetchall()
+        }
+        additions = {
+            "relevance": "REAL DEFAULT 0",
+            "evidence_quality": "REAL DEFAULT 0",
+            "noise_penalty": "REAL DEFAULT 0",
+            "recommended_action": "TEXT",
+            "score_version": "TEXT DEFAULT ''",
+            "status": "TEXT DEFAULT 'success'",
+        }
+        for name, definition in additions.items():
+            if name not in existing:
+                self.conn.execute(f"ALTER TABLE scores ADD COLUMN {name} {definition}")
 
     def close(self):
         self.conn.close()
@@ -148,12 +172,28 @@ class Database:
             self.conn.commit()
             return cursor.lastrowid
         except sqlite3.IntegrityError:
-            # URL already exists — update engagement metrics
+            # URL already exists — refresh signals and keep the richest collected evidence.
             self.conn.execute(
                 """UPDATE articles SET points = MAX(COALESCE(points, 0), ?),
-                   comment_count = MAX(COALESCE(comment_count, 0), ?)
+                   comment_count = MAX(COALESCE(comment_count, 0), ?),
+                   summary = CASE
+                       WHEN LENGTH(COALESCE(?, '')) > LENGTH(COALESCE(summary, '')) THEN ?
+                       ELSE summary END,
+                   content_text = CASE
+                       WHEN COALESCE(?, 0) > COALESCE(content_length, 0) THEN ?
+                       ELSE content_text END,
+                   content_length = MAX(COALESCE(content_length, 0), COALESCE(?, 0))
                    WHERE normalized_url = ?""",
-                (article.points or 0, article.comment_count or 0, norm_url),
+                (
+                    article.points or 0,
+                    article.comment_count or 0,
+                    article.summary,
+                    article.summary,
+                    article.content_length,
+                    article.content_text,
+                    article.content_length,
+                    norm_url,
+                ),
             )
             self.conn.commit()
             return None
@@ -186,11 +226,17 @@ class Database:
             self._row_to_article(row),
             ScoreBreakdown(
                 engagement_score=row["engagement_score"] or 0,
+                relevance=row["relevance"] or 0,
                 technical_depth=row["technical_depth"] or 0,
                 novelty=row["novelty"] or 0,
                 applicability=row["applicability"] or 0,
+                evidence_quality=row["evidence_quality"] or 0,
+                noise_penalty=row["noise_penalty"] or 0,
                 composite_score=row["composite_score"] or 0,
                 reasoning=row["reasoning"] or "",
+                recommended_action=row["recommended_action"] or "",
+                score_version=row["score_version"] or "",
+                status=row["status"] or "success",
             ),
         )
 
@@ -240,20 +286,42 @@ class Database:
         rows = self.conn.execute(query, (min_engagement,)).fetchall()
         return [self._row_to_article(r) for r in rows]
 
+    def get_articles_for_assessment(
+        self, score_version: str, *, force: bool = False
+    ) -> list[Article]:
+        """Return Articles whose assessment is missing, stale, or retryable."""
+        query = """SELECT a.* FROM articles a
+                   LEFT JOIN scores s ON a.id = s.article_id
+                   WHERE a.is_duplicate = 0"""
+        params: list = []
+        if not force:
+            query += " AND (s.id IS NULL OR s.status != 'success' OR s.score_version != ?)"
+            params.append(score_version)
+        query += " ORDER BY COALESCE(a.points, 0) DESC"
+        rows = self.conn.execute(query, params).fetchall()
+        return [self._row_to_article(row) for row in rows]
+
     def insert_score(self, article_id: int, score: ScoreBreakdown):
         self.conn.execute(
             """INSERT OR REPLACE INTO scores
-               (article_id, engagement_score, technical_depth, novelty,
-                applicability, composite_score, reasoning, scored_at)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+               (article_id, engagement_score, relevance, technical_depth, novelty,
+                applicability, evidence_quality, noise_penalty, composite_score, reasoning,
+                recommended_action, score_version, status, scored_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 article_id,
                 score.engagement_score,
+                score.relevance,
                 score.technical_depth,
                 score.novelty,
                 score.applicability,
+                score.evidence_quality,
+                score.noise_penalty,
                 score.composite_score,
                 score.reasoning,
+                score.recommended_action,
+                score.score_version,
+                score.status,
                 datetime.now().isoformat(),
             ),
         )
@@ -269,11 +337,15 @@ class Database:
     ) -> list[tuple[Article, ScoreBreakdown]]:
         cutoff = (datetime.now() - timedelta(days=max_age_days)).isoformat()
         query = """
-            SELECT a.*, s.engagement_score, s.technical_depth, s.novelty,
-                   s.applicability, s.composite_score, s.reasoning
+            SELECT a.*, s.engagement_score, s.relevance, s.technical_depth, s.novelty,
+                   s.applicability, s.evidence_quality, s.noise_penalty,
+                   s.composite_score, s.reasoning, s.recommended_action,
+                   s.score_version, s.status
             FROM articles a
             LEFT JOIN scores s ON a.id = s.article_id
-            WHERE a.is_duplicate = 0 AND a.content_text IS NOT NULL
+            WHERE a.is_duplicate = 0
+              AND (a.content_text IS NOT NULL OR a.summary IS NOT NULL
+                   OR a.source = 'slack' OR a.tags LIKE '%"manual"%')
               AND COALESCE(a.published_at, a.collected_at) >= ?
         """
         params: list = [cutoff]
@@ -295,8 +367,10 @@ class Database:
 
     def get_article_with_score(self, article_id: int) -> tuple[Article, ScoreBreakdown] | None:
         row = self.conn.execute(
-            """SELECT a.*, s.engagement_score, s.technical_depth, s.novelty,
-                      s.applicability, s.composite_score, s.reasoning
+            """SELECT a.*, s.engagement_score, s.relevance, s.technical_depth, s.novelty,
+                      s.applicability, s.evidence_quality, s.noise_penalty,
+                      s.composite_score, s.reasoning, s.recommended_action,
+                      s.score_version, s.status
                FROM articles a
                LEFT JOIN scores s ON a.id = s.article_id
                WHERE a.id = ?""",
@@ -407,8 +481,10 @@ class Database:
         self, week_start: str | None = None, week_end: str | None = None
     ) -> list[tuple[Article, ScoreBreakdown]]:
         query = """
-            SELECT a.*, s.engagement_score, s.technical_depth, s.novelty,
-                   s.applicability, s.composite_score, s.reasoning
+            SELECT a.*, s.engagement_score, s.relevance, s.technical_depth, s.novelty,
+                   s.applicability, s.evidence_quality, s.noise_penalty,
+                   s.composite_score, s.reasoning, s.recommended_action,
+                   s.score_version, s.status
             FROM articles a
             LEFT JOIN scores s ON a.id = s.article_id
             WHERE a.tags LIKE '%"manual"%' AND a.is_duplicate = 0
@@ -426,8 +502,10 @@ class Database:
             return []
         placeholders = ",".join("?" for _ in article_ids)
         query = f"""
-            SELECT a.*, s.engagement_score, s.technical_depth, s.novelty,
-                   s.applicability, s.composite_score, s.reasoning
+            SELECT a.*, s.engagement_score, s.relevance, s.technical_depth, s.novelty,
+                   s.applicability, s.evidence_quality, s.noise_penalty,
+                   s.composite_score, s.reasoning, s.recommended_action,
+                   s.score_version, s.status
             FROM articles a
             LEFT JOIN scores s ON a.id = s.article_id
             WHERE a.id IN ({placeholders})

@@ -20,6 +20,21 @@ An article explicitly selected through the Web interface, always tagged `manual`
 it as required coverage. Manual articles are enriched during article intake.
 _Avoid_: Pinned link, forced article
 
+**Reader profile**:
+The durable description of the reader's current outcomes, topic priorities, positive evidence, and
+noise signals. It guides Article assessment but does not constrain Collect to literal keywords.
+_Avoid_: Keyword list, persona prompt
+
+**Article assessment**:
+A versioned judgment of an Article's personal relevance, evidence, technical depth, novel insight,
+and actionability, including an explicit noise penalty and recommended action.
+_Avoid_: LLM score, quality number
+
+**Reading slate**:
+The ranked, non-redundant set of Articles selected from current Article assessments for the Web,
+Digest, and Podcast outputs. Manual articles remain required Podcast coverage independently.
+_Avoid_: Top results, feed
+
 ## Example dialogue
 
 > **Developer:** Does a URL pasted into Add Links go through Collect?

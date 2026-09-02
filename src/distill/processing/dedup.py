@@ -1,6 +1,22 @@
 from difflib import SequenceMatcher
 
 from distill.db import Database
+from distill.models import Article
+
+
+def _choose_canonical(left: Article, right: Article) -> tuple[Article, Article]:
+    """Prefer the Article with the richest evidence, then engagement, then stable age."""
+
+    def quality(article: Article) -> tuple[int, int, int, int]:
+        return (
+            article.content_length or len(article.content_text or ""),
+            len(article.summary or ""),
+            (article.points or 0) + (article.comment_count or 0),
+            -article.id,
+        )
+
+    canonical = max((left, right), key=quality)
+    return canonical, right if canonical is left else left
 
 
 def run_title_dedup(db: Database, threshold: float = 0.85) -> int:
@@ -15,8 +31,7 @@ def run_title_dedup(db: Database, threshold: float = 0.85) -> int:
                 continue
             ratio = SequenceMatcher(None, a.title.lower(), b.title.lower()).ratio()
             if ratio >= threshold:
-                canonical = a if a.id < b.id else b
-                duplicate = b if a.id < b.id else a
+                canonical, duplicate = _choose_canonical(a, b)
                 db.mark_duplicate(duplicate.id, canonical.id, ratio, "title_similarity")
                 marked += 1
 
@@ -57,8 +72,7 @@ def run_embedding_dedup(
                 continue
             similarity = float(sim_matrix[i][j])
             if similarity >= threshold:
-                canonical = articles[i] if articles[i].id < articles[j].id else articles[j]
-                duplicate = articles[j] if articles[i].id < articles[j].id else articles[i]
+                canonical, duplicate = _choose_canonical(articles[i], articles[j])
                 db.mark_duplicate(duplicate.id, canonical.id, similarity, "embedding_cosine")
                 skip_ids.add(duplicate.id)
                 marked += 1

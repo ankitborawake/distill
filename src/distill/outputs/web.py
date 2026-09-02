@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 
 from distill.config import get_db_path
 from distill.db import Database
+from distill.processing.recommendation import ReadingSlateRequest, select_reading_slate
 from distill.processing.text import plain_text_excerpt
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
@@ -37,7 +38,11 @@ def create_app(config: dict) -> FastAPI:
 
         db = get_db()
         _, week_start, week_end = get_week_range()
-        articles = db.get_top_articles(limit=limit, week_start=week_start, week_end=week_end)
+        articles = select_reading_slate(
+            db,
+            config,
+            ReadingSlateRequest(limit=limit, week_start=week_start, week_end=week_end),
+        )
 
         if source:
             articles = [(a, s) for a, s in articles if a.source.value == source]

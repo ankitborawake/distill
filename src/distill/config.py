@@ -27,12 +27,29 @@ def _default_config() -> dict:
         "scoring": {
             "model": "claude-sonnet-4-5-20250929",
             "batch_size": 5,
+            "content_preview_chars": 6000,
             "weights": {
-                "engagement": 0.20,
-                "technical_depth": 0.25,
-                "novelty": 0.25,
-                "applicability": 0.30,
+                "engagement": 0.05,
+                "relevance": 0.25,
+                "technical_depth": 0.15,
+                "novelty": 0.15,
+                "applicability": 0.25,
+                "evidence_quality": 0.15,
+                "noise_penalty": 0.25,
             },
+        },
+        "reader_profile": {
+            "mission": "Find evidence-backed, actionable AI engineering practices.",
+            "priority_outcomes": [],
+            "positive_signals": [],
+            "noise_signals": [],
+        },
+        "recommendation": {
+            "minimum_score": 0.35,
+            "candidate_multiplier": 5,
+            "diversity_strength": 0.15,
+            "max_per_domain": 2,
+            "max_per_source": 12,
         },
         "dedup": {
             "title_similarity_threshold": 0.85,

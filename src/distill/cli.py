@@ -139,10 +139,11 @@ def score(
     """Score articles using engagement metrics + Claude."""
     config = load_config(config_path)
     db = _get_db(config)
+    db.init_schema()
 
     from distill.processing.scorer import score_articles
 
-    count = asyncio.run(score_articles(db, config))
+    count = asyncio.run(score_articles(db, config, force=rescore))
     db.close()
     console.print(f"[green]Scored {count} articles.[/green]")
 
@@ -188,7 +189,7 @@ def digest(
     from distill.outputs.digest import generate_digest
 
     output_dir = get_output_dir(config)
-    path = generate_digest(db, output_dir, week_label=week, top_n=top_n)
+    path = generate_digest(db, output_dir, week_label=week, top_n=top_n, config=config)
     db.close()
     console.print(f"[green]Digest written to {path}[/green]")
 
@@ -550,7 +551,7 @@ def archive(config_path: Annotated[Path | None, typer.Option("--config")] = None
 
     # Generate digest
     output_dir = get_output_dir(config)
-    path = generate_digest(db, output_dir, top_n=top_n)
+    path = generate_digest(db, output_dir, top_n=top_n, config=config)
     console.print(f"  Digest: {path}")
 
     # Generate podcast
@@ -564,8 +565,17 @@ def archive(config_path: Annotated[Path | None, typer.Option("--config")] = None
         console.print("  [yellow]Skipping podcast (dependencies not installed)[/yellow]")
 
     # Cache this week's top articles to prevent repeats next week
-    top_articles = db.get_top_articles(
-        limit=top_n, week_start=week_start, week_end=week_end, exclude_last_week=False
+    from distill.processing.recommendation import ReadingSlateRequest, select_reading_slate
+
+    top_articles = select_reading_slate(
+        db,
+        config,
+        ReadingSlateRequest(
+            limit=top_n,
+            week_start=week_start,
+            week_end=week_end,
+            exclude_last_week=False,
+        ),
     )
     if top_articles:
         db.save_weekly_cache(label, [a for a, _ in top_articles])

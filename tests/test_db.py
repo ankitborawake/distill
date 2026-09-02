@@ -57,6 +57,34 @@ def test_insert_duplicate_url_updates_engagement(tmp_db):
     assert stored.comment_count == 20
 
 
+def test_insert_duplicate_url_keeps_richest_content(tmp_db):
+    article_id = tmp_db.insert_article(
+        CollectedArticle(
+            url="https://example.com/refresh",
+            title="Refresh",
+            source=Source.HACKERNEWS,
+            summary="Short",
+            content_text="old",
+            content_length=3,
+        )
+    )
+    tmp_db.insert_article(
+        CollectedArticle(
+            url="https://example.com/refresh",
+            title="Refresh",
+            source=Source.RSS,
+            summary="A much richer summary",
+            content_text="new evidence " * 100,
+            content_length=1300,
+        )
+    )
+
+    stored, _ = tmp_db.get_article_with_score(article_id)
+    assert stored.summary == "A much richer summary"
+    assert stored.content_text == "new evidence " * 100
+    assert stored.content_length == 1300
+
+
 def test_get_stats(tmp_db):
     article = CollectedArticle(
         url="https://example.com/stats-test",
@@ -110,6 +138,25 @@ def test_get_article_with_score(tmp_db):
     assert article.id == article_id
     assert article.title == "Detail"
     assert score.composite_score == 0
+
+
+def test_article_assessment_version_controls_rescoring(tmp_db):
+    article_id = tmp_db.insert_article(
+        CollectedArticle(
+            url="https://example.com/versioned",
+            title="Versioned assessment",
+            source=Source.RSS,
+        )
+    )
+    tmp_db.insert_score(
+        article_id,
+        ScoreBreakdown(composite_score=0.7, score_version="profile-v1", status="success"),
+    )
+
+    assert tmp_db.get_articles_for_assessment("profile-v1") == []
+    assert [article.id for article in tmp_db.get_articles_for_assessment("profile-v2")] == [
+        article_id
+    ]
 
 
 def test_digest_and_podcast_persistence(tmp_db, tmp_path):

@@ -55,7 +55,7 @@
                 <div class="score-bar-wrap">
                     <div class="score-bar-fill" style="width: {{ (score.composite_score * 100)|int }}%"></div>
                 </div>
-                <div class="score-detail">D:{{ "%.0f"|format(score.technical_depth) }} N:{{ "%.0f"|format(score.novelty) }} A:{{ "%.0f"|format(score.applicability) }}</div>
+                <div class="score-detail">R:{{ "%.0f"|format(score.relevance) }} D:{{ "%.0f"|format(score.technical_depth) }} N:{{ "%.0f"|format(score.novelty) }} A:{{ "%.0f"|format(score.applicability) }} E:{{ "%.0f"|format(score.evidence_quality) }}</div>
             </div>
             {% else %}
             <div class="composite-score" style="color: var(--text-muted);">—</div>

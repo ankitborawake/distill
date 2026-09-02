@@ -23,22 +23,37 @@
             <div class="value">{{ "%.2f"|format(score.engagement_score) }}</div>
         </div>
         <div class="stat-card">
+            <div class="label">Relevance</div>
+            <div class="value">{{ "%.2f"|format(score.relevance) }}</div>
+        </div>
+        <div class="stat-card">
             <div class="label">Depth</div>
-            <div class="value">{{ "%.0f"|format(score.technical_depth) }}</div>
+            <div class="value">{{ "%.2f"|format(score.technical_depth) }}</div>
         </div>
         <div class="stat-card">
             <div class="label">Novelty</div>
-            <div class="value">{{ "%.0f"|format(score.novelty) }}</div>
+            <div class="value">{{ "%.2f"|format(score.novelty) }}</div>
         </div>
         <div class="stat-card">
             <div class="label">Applicability</div>
-            <div class="value">{{ "%.0f"|format(score.applicability) }}</div>
+            <div class="value">{{ "%.2f"|format(score.applicability) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Evidence</div>
+            <div class="value">{{ "%.2f"|format(score.evidence_quality) }}</div>
+        </div>
+        <div class="stat-card">
+            <div class="label">Noise penalty</div>
+            <div class="value">{{ "%.2f"|format(score.noise_penalty) }}</div>
         </div>
     </div>
     {% if score.reasoning %}
     <blockquote style="margin-top: 0.75rem; border-left: 3px solid var(--accent); padding-left: 1rem; color: var(--text); font-size: 0.9rem;">
         {{ score.reasoning }}
     </blockquote>
+    {% endif %}
+    {% if score.recommended_action %}
+    <p><strong>Recommended action:</strong> {{ score.recommended_action }}</p>
     {% endif %}
 </details>
 {% endif %}

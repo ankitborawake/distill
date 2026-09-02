@@ -4,7 +4,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from distill.db import Database
-from distill.models import CollectedArticle, Source
+from distill.models import CollectedArticle, ScoreBreakdown, Source
 from distill.outputs.web import create_app
 
 
@@ -44,6 +44,7 @@ def test_index_with_articles():
     )
     aid = db.insert_article(article)
     db.update_content(aid, "Test content " * 50)
+    db.insert_score(aid, ScoreBreakdown(composite_score=0.5))
     db.close()
 
     config = _make_config(db_path)
@@ -71,6 +72,7 @@ def test_index_uses_plain_text_content_when_summary_is_missing():
     )
     article_id = db.insert_article(article)
     db.update_content(article_id, "A useful extracted description for this Hacker News article.")
+    db.insert_score(article_id, ScoreBreakdown(composite_score=0.5))
     db.close()
 
     resp = TestClient(create_app(_make_config(db_path))).get("/")
@@ -91,7 +93,8 @@ def test_index_strips_html_from_stored_summary():
         content_text="Extracted article content.",
         content_length=26,
     )
-    db.insert_article(article)
+    article_id = db.insert_article(article)
+    db.insert_score(article_id, ScoreBreakdown(composite_score=0.5))
     db.close()
 
     resp = TestClient(create_app(_make_config(db_path))).get("/")

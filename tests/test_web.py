@@ -87,7 +87,7 @@ def test_index_strips_html_from_stored_summary():
         url="https://example.com/rss-summary",
         title="RSS Article",
         source=Source.RSS,
-        summary="<p>A <strong>useful</strong> summary &amp; description.</p>",
+        summary="<p>A <strong>useful</strong> summary &amp; description.</p><b clas...",
         content_text="Extracted article content.",
         content_length=26,
     )
@@ -98,6 +98,7 @@ def test_index_strips_html_from_stored_summary():
 
     assert "A useful summary &amp; description." in resp.text
     assert "&lt;p&gt;" not in resp.text
+    assert "&lt;b clas" not in resp.text
 
 
 def test_stats_page():

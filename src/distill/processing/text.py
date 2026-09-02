@@ -7,7 +7,7 @@ def plain_text(value: str | None) -> str:
     if not value:
         return ""
     decoded = html.unescape(value)
-    without_tags = re.sub(r"<[^>]+>", " ", decoded)
+    without_tags = re.sub(r"<[/!A-Za-z][^>]*(?:>|$)", " ", decoded)
     return " ".join(html.unescape(without_tags).split())
 
 

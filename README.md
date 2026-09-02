@@ -48,30 +48,111 @@ The main briefing has two clear tiers:
 2. **More to explore** fills the requested reading-list size with the best remaining relevant
    articles, without presenting them as equally strong recommendations.
 
-## Quick start
+## First-time setup
 
-### Requirements
+### 1. Check the requirements
 
 - Python 3.12+
 - [`uv`](https://docs.astral.sh/uv/)
 - An Anthropic API key for article assessment and `edge-tts` podcast scripts
 
-### Install and run
+Confirm the local tools are available:
+
+```bash
+python3 --version
+uv --version
+```
+
+### 2. Clone and install
 
 ```bash
 git clone https://github.com/ankitb7/distill.git
 cd distill
 
 uv sync
-cp .env.example .env
-# Add ANTHROPIC_API_KEY to .env
+```
 
+### 3. Add your Anthropic API key
+
+```bash
+cp .env.example .env
+```
+
+Open `.env` and replace the placeholder:
+
+```dotenv
+ANTHROPIC_API_KEY=sk-ant-your-key-here
+```
+
+Keep `.env` local; it is ignored by Git. Without a key, collection and extraction still work,
+but Claude cannot produce evidence-based article assessments.
+
+### 4. Personalize the reader profile and sources
+
+Before the first run, open [`config.yaml`](config.yaml) and replace the example
+`reader_profile` with your own mission, priority outcomes, positive signals, and noise signals.
+The checked-in profile is intentionally opinionated and should be treated as an example—not a
+universal recommendation profile.
+
+Review `sources.rss.feeds` and `sources.hackernews.keywords` at the same time. If you do not plan
+to ingest links from Slack, disable it explicitly:
+
+```yaml
+sources:
+  slack:
+    enabled: false
+```
+
+If Slack remains enabled, configure either the `token` or `mcp` backend described in
+[Slack ingestion](#slack-ingestion).
+
+### 5. Initialize and run the pipeline
+
+```bash
 uv run distill init
 uv run distill run
+```
+
+The first run can take several minutes because Distill fetches article text and asks Claude to
+assess recent candidates. Progress is printed for each pipeline stage and assessment batch.
+
+### 6. Verify the result
+
+```bash
+uv run distill stats
 uv run distill serve
 ```
 
-Open [http://localhost:8585](http://localhost:8585).
+`distill stats` should report collected articles and scored items. Then open
+[http://localhost:8585](http://localhost:8585) and confirm the Briefing page shows ranked cards.
+Stop the server with <kbd>Ctrl</kbd>+<kbd>C</kbd>.
+
+If the briefing is empty, check that articles were collected, extracted content exists, and
+`ANTHROPIC_API_KEY` is available to the process.
+
+### 7. Optional: configure podcasts
+
+Choose one provider under `podcast.provider` in `config.yaml`:
+
+- **NotebookLM:** set `provider: notebooklm`, then authenticate once with
+  `uv run notebooklm login`. Use `uv run notebooklm doctor` when authentication needs checking.
+- **edge-tts:** set `provider: edge-tts`. It uses your Anthropic key to write the script and does
+  not require Google authentication.
+
+Generate an episode only after the reading pipeline has produced a slate:
+
+```bash
+uv run distill podcast
+```
+
+## Everyday use
+
+After first-time setup, the normal workflow is:
+
+```bash
+uv run distill run
+uv run distill serve
+```
 
 `distill run` performs collection, extraction, deduplication, assessment, and safe content
 truncation. Later runs assess only new, stale, or retryable articles within the configured

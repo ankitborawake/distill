@@ -59,6 +59,47 @@ def test_index_with_articles():
     assert "Web Test Article" in resp.text
 
 
+def test_index_uses_plain_text_content_when_summary_is_missing():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = Path(f.name)
+    db = Database(db_path)
+    db.init_schema()
+    article = CollectedArticle(
+        url="https://example.com/hn-summary",
+        title="HN Article",
+        source=Source.HACKERNEWS,
+    )
+    article_id = db.insert_article(article)
+    db.update_content(article_id, "A useful extracted description for this Hacker News article.")
+    db.close()
+
+    resp = TestClient(create_app(_make_config(db_path))).get("/")
+
+    assert "A useful extracted description for this Hacker News article." in resp.text
+
+
+def test_index_strips_html_from_stored_summary():
+    with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
+        db_path = Path(f.name)
+    db = Database(db_path)
+    db.init_schema()
+    article = CollectedArticle(
+        url="https://example.com/rss-summary",
+        title="RSS Article",
+        source=Source.RSS,
+        summary="<p>A <strong>useful</strong> summary &amp; description.</p>",
+        content_text="Extracted article content.",
+        content_length=26,
+    )
+    db.insert_article(article)
+    db.close()
+
+    resp = TestClient(create_app(_make_config(db_path))).get("/")
+
+    assert "A useful summary &amp; description." in resp.text
+    assert "&lt;p&gt;" not in resp.text
+
+
 def test_stats_page():
     with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as f:
         db_path = Path(f.name)

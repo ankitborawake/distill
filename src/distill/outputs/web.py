@@ -7,6 +7,7 @@ from fastapi.templating import Jinja2Templates
 
 from distill.config import get_db_path
 from distill.db import Database
+from distill.processing.text import plain_text_excerpt
 
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
@@ -23,6 +24,7 @@ def _build_slack_channel_map(config: dict) -> dict[str, str]:
 def create_app(config: dict) -> FastAPI:
     app = FastAPI(title="Distill")
     templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+    templates.env.filters["plain_text_excerpt"] = plain_text_excerpt
     db_path = get_db_path(config)
     slack_channel_map = _build_slack_channel_map(config)
 

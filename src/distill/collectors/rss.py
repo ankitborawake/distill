@@ -7,6 +7,7 @@ import httpx
 
 from distill.models import CollectedArticle, Source
 from distill.processing.extractor import ExtractionRequest, extract_articles
+from distill.processing.text import plain_text_excerpt
 
 
 class RSSCollector:
@@ -76,11 +77,7 @@ class RSSCollector:
                 break
 
         author = entry.get("author", feed_name)
-        summary = entry.get("summary", "")
-        if summary:
-            summary = html_mod.unescape(summary)
-        if len(summary) > 500:
-            summary = summary[:497] + "..."
+        summary = plain_text_excerpt(entry.get("summary", ""), limit=500)
 
         tags = [t.get("term", "") for t in entry.get("tags", []) if t.get("term")]
 

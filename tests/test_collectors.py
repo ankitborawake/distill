@@ -9,6 +9,20 @@ from distill.collectors.slack import SlackCollector, _fetch_channel_articles, ex
 from distill.models import Source
 
 
+def test_rss_summary_is_plain_text():
+    article = RSSCollector()._parse_entry(
+        {
+            "link": "https://example.com/article",
+            "title": "Example",
+            "summary": '<div><img src="card.png"></div><p>Useful <b>AI</b> &amp; data.</p>',
+        },
+        "Example feed",
+    )
+
+    assert article is not None
+    assert article.summary == "Useful AI & data."
+
+
 def test_slack_source_enum_value():
     assert Source.SLACK == "slack"
 

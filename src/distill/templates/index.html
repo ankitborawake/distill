@@ -38,7 +38,8 @@
             {% else %}
             <a href="{{ article.url }}" target="_blank" class="article-title">{{ article.title }}</a>
             {% endif %}
-            {% if article.summary %}<div class="article-summary">{{ article.summary }}</div>{% endif %}
+            {% set description = (article.summary or article.content_text)|plain_text_excerpt %}
+            {% if description %}<div class="article-summary">{{ description }}</div>{% endif %}
             <div class="article-meta">
                 {% if article.author %}<span>{{ article.author }}</span>{% endif %}
                 <span class="source-badge" data-source="{{ article.source.value }}">{{ article.source.value }}</span>

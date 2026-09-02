@@ -95,8 +95,7 @@ def create_app(config: dict) -> FastAPI:
         db.close()
         if not digest:
             return HTMLResponse("Digest not found", status_code=404)
-        markdown = digest.markdown or ""
-        return HTMLResponse(f"<pre>{markdown}</pre>")
+        return templates.TemplateResponse(request, "digest_detail.html", {"digest": digest})
 
     @app.get("/stats", response_class=HTMLResponse)
     async def stats_page(request: Request):
